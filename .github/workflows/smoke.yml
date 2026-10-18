@@ -1,0 +1,27 @@
+name: Smoke test (live)
+
+# 本番 Supabase に対して、ゲスト 2 人でランク戦を通しで確かめる（公開 anon キーのみ使用）。
+# Supabase deploy の成功後と、手動実行で動く。
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ['Supabase deploy']
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx vitest run tests/smoke
+        env:
+          SMOKE: '1'
