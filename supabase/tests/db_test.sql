@@ -16,6 +16,12 @@ set role service_role;
 select pg_temp.assert((register_leaf('00000000-0000-0000-0000-00000000000a', '[[0,0],[1,0],[0,1]]', 'h1')).version = 1, '初回登録 version=1');
 select pg_temp.assert((register_leaf('00000000-0000-0000-0000-00000000000a', '[[0,0],[2,0],[0,2]]', 'h2')).version = 2, '再登録で version++');
 select pg_temp.assert((select count(*) from leaves where user_id = '00000000-0000-0000-0000-00000000000a') = 1, '1 ユーザー 1 枚');
+select pg_temp.assert((register_leaf('00000000-0000-0000-0000-00000000000a', '[[0,0],[2,0],[0,2]]', 'h2', 'momiji')).species = 'momiji', '種類を登録');
+do $$ begin
+  perform register_leaf('00000000-0000-0000-0000-00000000000a', '[[0,0],[2,0],[0,2]]', 'h2', 'unknown');
+  raise exception 'should fail';
+exception when check_violation then null;
+end $$;
 reset role;
 
 -- T10: 相手が 0 人なら null（クライアントは練習ボットへ）
@@ -29,7 +35,9 @@ set role service_role;
 create temp table r1 as select * from create_challenge('00000000-0000-0000-0000-00000000000a', 'k1', 'tanbo', 42, '1.0.0');
 reset role;
 select pg_temp.assert((select defender_id from r1) = '00000000-0000-0000-0000-00000000000b', '自分以外が抽選される');
-select pg_temp.assert((select challenger_leaf_version from r1) = 2, '挑戦側バージョンを保存');
+select pg_temp.assert((select challenger_leaf_version from r1) = 3, '挑戦側バージョンを保存');
+select pg_temp.assert((select challenger_species from r1) = 'momiji', '挑戦側の種類を保存');
+select pg_temp.assert((select defender_species from r1) = 'sakura', '防衛側の種類を保存');
 select pg_temp.assert((select challenger_shape from r1) = '[[0,0],[2,0],[0,2]]'::jsonb, '挑戦側形状を保存');
 
 -- 冪等：同じキーで同じレース

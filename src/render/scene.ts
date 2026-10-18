@@ -5,7 +5,7 @@
  * - 落差の高さ・水面の形・しぶきは見た目専用（terrain.ts）
  */
 import * as THREE from 'three';
-import { LEAF_RULES, centroid, type Course, type LeafPose, type Polygon } from '../../packages/sim-core/src/index.ts';
+import { LEAF_RULES, centroid, type Course, type LeafPose, type Polygon, type SpeciesId } from '../../packages/sim-core/src/index.ts';
 import { asphaltMap, blockMap, concreteMaps, earthMaps, grassMaps, leafTexture, pebbleMaps, SKY, type LeafTone, type MaterialMaps } from './textures.ts';
 import {
   MAX_COVERS, MAX_DROPS, MAX_STONES, addCaustics, addCoverShade, createCoverUniforms, createSkyMaterial, createWaterMaterial,
@@ -30,6 +30,7 @@ const QUALITY: Record<EffectiveQuality, {
 
 export interface LeafVisual {
   polygon: Polygon;
+  species: SpeciesId;
   tone: LeafTone;
 }
 
@@ -111,7 +112,7 @@ export class CanalScene {
   private fpsFrames = 0;
   private lowFpsSeconds = 0;
   private textures: Record<string, MaterialMaps> = {};
-  private leafTextures = new Map<LeafTone, THREE.Texture>();
+  private leafTextures = new Map<string, THREE.Texture>();
   private resizeObs: ResizeObserver;
 
   constructor(container: HTMLElement, quality: EffectiveQuality) {
@@ -603,11 +604,12 @@ export class CanalScene {
 
   // ---------------------------------------------------------------- 葉っぱ
 
-  private leafTex(tone: LeafTone): THREE.Texture {
-    let t = this.leafTextures.get(tone);
+  private leafTex(species: SpeciesId, tone: LeafTone): THREE.Texture {
+    const key = `${species}:${tone}`;
+    let t = this.leafTextures.get(key);
     if (!t) {
-      t = leafTexture(tone);
-      this.leafTextures.set(tone, t);
+      t = leafTexture(species, tone);
+      this.leafTextures.set(key, t);
     }
     return t;
   }
@@ -621,7 +623,7 @@ export class CanalScene {
       (l.shadow.material as THREE.Material).dispose();
     }
     this.leaves = visuals.map((v) => {
-      const mat = new THREE.MeshStandardMaterial({ map: this.leafTex(v.tone), side: THREE.DoubleSide, roughness: 0.45, metalness: 0 });
+      const mat = new THREE.MeshStandardMaterial({ map: this.leafTex(v.species, v.tone), side: THREE.DoubleSide, roughness: 0.45, metalness: 0 });
       addCoverShade(mat, this.cover);
       const mesh = new THREE.Mesh(leafGeometry(v.polygon), mat);
       mesh.castShadow = QUALITY[this.quality].shadows;

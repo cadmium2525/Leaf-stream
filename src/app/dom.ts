@@ -31,6 +31,11 @@ export function toast(msg: string, ms = 2600): void {
   toastTimer = window.setTimeout(() => el.classList.remove('show'), ms);
 }
 
+export function hideToast(): void {
+  window.clearTimeout(toastTimer);
+  document.getElementById('toast')?.classList.remove('show');
+}
+
 export function fmtTime(ticks: number): string {
   const s = ticks / 60;
   return `${s.toFixed(2)} 秒`;

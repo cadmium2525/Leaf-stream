@@ -3,14 +3,15 @@
  * 指／マウスでハサミの軌跡を描く → 分かれた片から「残す方」を選ぶ → 正規化。
  */
 import {
-  LEAF_RULES, area, defaultLeaf, normalizePolygon, pointInPolygon, splitPolygonByPath, validateLeaf,
+  LEAF_RULES, area, getSpecies, normalizePolygon, pointInPolygon, splitPolygonByPath, validateLeaf, type SpeciesId,
   type Polygon, type Vec2,
 } from '../../packages/sim-core/src/index.ts';
-import { leafTexture } from '../render/textures.ts';
+import { leafTexture, speciesColor } from '../render/textures.ts';
 
 export interface EditorState {
   polygon: Polygon;
   cuts: number;
+  species: SpeciesId;
 }
 
 type Mode = 'idle' | 'drawing' | 'choosing';
@@ -58,16 +59,14 @@ export class LeafEditor {
   private ox = 0;
   private oy = 0;
   private dpr = 1;
-  private tex: HTMLCanvasElement;
-  private ghost = defaultLeaf();
+  private texCache = new Map<SpeciesId, HTMLCanvasElement>();
   private ro: ResizeObserver;
   private pointerId: number | null = null;
 
   constructor(private canvas: HTMLCanvasElement, initial: EditorState) {
     this.ctx = canvas.getContext('2d')!;
-    this.history = [{ polygon: initial.polygon, cuts: initial.cuts }];
+    this.history = [{ polygon: initial.polygon, cuts: initial.cuts, species: initial.species }];
     this.index = 0;
-    this.tex = leafTexture('fresh', 512).image as HTMLCanvasElement;
     canvas.addEventListener('pointerdown', this.down);
     canvas.addEventListener('pointermove', this.move);
     canvas.addEventListener('pointerup', this.up);
@@ -108,7 +107,23 @@ export class LeafEditor {
 
   reset(): void {
     this.cancelChoice();
-    this.push({ polygon: defaultLeaf(), cuts: 0 });
+    this.push({ polygon: getSpecies(this.state.species).polygon, cuts: 0, species: this.state.species });
+  }
+
+  /** 葉の種類を変える（元の形からやり直し。元に戻すで戻せる） */
+  setSpecies(species: SpeciesId): void {
+    this.cancelChoice();
+    this.push({ polygon: getSpecies(species).polygon, cuts: 0, species });
+  }
+
+  private get tex(): HTMLCanvasElement {
+    const sp = this.state.species;
+    let t = this.texCache.get(sp);
+    if (!t) {
+      t = leafTexture(sp, 'mine', 512).image as HTMLCanvasElement;
+      this.texCache.set(sp, t);
+    }
+    return t;
   }
 
   /** 選択中の片のうち最大のものを残す */
@@ -288,7 +303,7 @@ export class LeafEditor {
       this.draw();
       return;
     }
-    this.push({ polygon: p, cuts: this.state.cuts + 1 });
+    this.push({ polygon: p, cuts: this.state.cuts + 1, species: this.state.species });
   }
 
   // ---------------------------------------------------------------- 描画
@@ -336,7 +351,7 @@ export class LeafEditor {
     // 元の葉の輪郭
     ctx.setLineDash([4, 4]);
     ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-    ctx.stroke(this.polyPath(this.ghost));
+    ctx.stroke(this.polyPath(getSpecies(this.state.species).polygon));
     ctx.setLineDash([]);
 
     const poly = this.state.polygon;
@@ -356,12 +371,12 @@ export class LeafEditor {
       ctx.shadowColor = 'rgba(0,0,0,0.35)';
       ctx.shadowBlur = 14;
       ctx.shadowOffsetY = 6;
-      ctx.fillStyle = '#4f8a2e';
+      ctx.fillStyle = speciesColor(this.state.species);
       ctx.fill(path);
       ctx.restore();
       this.fillLeaf(path, 1);
       ctx.lineWidth = 1.5;
-      ctx.strokeStyle = '#2f5d1c';
+      ctx.strokeStyle = 'rgba(30,40,20,0.8)';
       ctx.stroke(path);
     }
 

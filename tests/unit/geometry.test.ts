@@ -151,3 +151,17 @@ describe('検証（T01 ほか異常入力）', () => {
     }
   });
 });
+
+describe('葉っぱの種類', () => {
+  test('どの種類の元の形も登録できる形で、切って使える', async () => {
+    const { SPECIES } = await import('../../packages/sim-core/src/index.ts');
+    expect(SPECIES.map((s) => s.id)).toEqual(['sakura', 'yanagi', 'nasturtium', 'momiji']);
+    for (const sp of SPECIES) {
+      expect(validateLeaf(sp.polygon), sp.id).toEqual({ ok: true, errors: [] });
+      // 正規化済み（サーバーが受け付ける形）
+      expect(normalizePolygon(sp.polygon)).toEqual(sp.polygon);
+      const pieces = splitPolygon(sp.polygon, [-5, 0.3], [5, 0.3]);
+      expect(pieces.length).toBeGreaterThanOrEqual(2);
+    }
+  });
+});

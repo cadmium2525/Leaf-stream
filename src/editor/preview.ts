@@ -23,8 +23,10 @@ export class PreviewChannel {
     this.course = generateCourse(courseId, seed);
   }
 
-  setLeaf(p: Polygon): void {
+  /** 自分の葉と、比較用のゴースト（切る前の形） */
+  setLeaf(p: Polygon, ghost?: Polygon): void {
     this.polygon = p;
+    if (ghost) this.ghostBody = prepareLeaf(ghost);
     this.restart();
   }
 

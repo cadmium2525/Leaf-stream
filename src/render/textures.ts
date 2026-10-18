@@ -3,7 +3,7 @@
  * 描画専用。ここでの乱数は勝敗に影響しない。
  */
 import * as THREE from 'three';
-import { LEAF_RULES } from '../../packages/sim-core/src/index.ts';
+import { LEAF_RULES, type SpeciesId } from '../../packages/sim-core/src/index.ts';
 
 function canvas(w: number, h = w): [HTMLCanvasElement, CanvasRenderingContext2D] {
   const c = document.createElement('canvas');
@@ -366,80 +366,120 @@ export function paddyMap(size: number): THREE.Texture {
   return toTexture(c);
 }
 
-export type LeafTone = 'fresh' | 'autumn' | 'pale';
+export type LeafTone = 'mine' | 'rival';
 
-const TONES: Record<LeafTone, { base: string; edge: string; vein: string; tip: string }> = {
-  fresh: { base: '#5f9a35', edge: '#3d6e22', vein: '#b9d98c', tip: '#79ae45' },
-  autumn: { base: '#c98a2e', edge: '#94471b', vein: '#f0cf86', tip: '#d75f22' },
-  pale: { base: '#8fb06a', edge: '#5d7d3f', vein: '#dfeec5', tip: '#a6c27d' },
+interface LeafPalette { base: string; edge: string; vein: string; tip: string }
+
+/** 種類ごとの色。rival は相手の葉（同じ種類でも見分けがつくよう秋色寄り） */
+const PALETTES: Record<SpeciesId, Record<LeafTone, LeafPalette>> = {
+  sakura: {
+    mine: { base: '#5f9a35', edge: '#3d6e22', vein: '#b9d98c', tip: '#79ae45' },
+    rival: { base: '#c98a2e', edge: '#94471b', vein: '#f0cf86', tip: '#d75f22' },
+  },
+  yanagi: {
+    mine: { base: '#93b94a', edge: '#5f8a2c', vein: '#e3f0b0', tip: '#b2c95c' },
+    rival: { base: '#d6b54a', edge: '#a07a22', vein: '#f6e3a0', tip: '#e2c255' },
+  },
+  nasturtium: {
+    mine: { base: '#6fb04c', edge: '#4c8a33', vein: '#e2f2c8', tip: '#86c25e' },
+    rival: { base: '#b9b54a', edge: '#8a7e2a', vein: '#f2edb8', tip: '#cdbf55' },
+  },
+  momiji: {
+    mine: { base: '#c8402a', edge: '#8e2416', vein: '#f0a07a', tip: '#e0582f' },
+    rival: { base: '#e8a42c', edge: '#b0661a', vein: '#f8dc90', tip: '#f0bb3a' },
+  },
 };
 
 /**
  * 葉っぱのテクスチャ。UV は葉のローカル座標の許容範囲（LEAF_RULES の箱）に合わせるので、
  * どんな切り方をしても葉脈の位置は元の葉のまま残る。
  */
-export function leafTexture(tone: LeafTone, size = 512): THREE.CanvasTexture {
-  const t = TONES[tone];
-  const r = rand(tone === 'fresh' ? 3 : tone === 'autumn' ? 5 : 8);
+export function leafTexture(species: SpeciesId, tone: LeafTone, size = 512): THREE.CanvasTexture {
+  const t = PALETTES[species][tone];
+  const r = rand(species.length * 7 + (tone === 'mine' ? 3 : 5));
   const w = size;
   const hgt = Math.round((size * LEAF_RULES.maxAbsY) / LEAF_RULES.maxAbsX);
   const [c, ctx] = canvas(w, hgt);
   // 座標変換：ローカル (x, y) → キャンバス
   const sx = (x: number) => ((x + LEAF_RULES.maxAbsX) / (2 * LEAF_RULES.maxAbsX)) * w;
   const sy = (y: number) => ((LEAF_RULES.maxAbsY - y) / (2 * LEAF_RULES.maxAbsY)) * hgt;
+  const unit = w / (2 * LEAF_RULES.maxAbsX);
   const g = ctx.createRadialGradient(sx(0), sy(0), 0, sx(0), sy(0), w * 0.6);
   g.addColorStop(0, t.base);
-  g.addColorStop(0.75, t.base);
+  g.addColorStop(0.7, t.base);
   g.addColorStop(1, t.edge);
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, w, hgt);
-  const tipG = ctx.createLinearGradient(0, sy(4.6), 0, sy(1));
-  tipG.addColorStop(0, t.tip);
-  tipG.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = tipG;
-  ctx.globalAlpha = 0.5;
-  ctx.fillRect(0, 0, w, hgt);
-  ctx.globalAlpha = 1;
   // 細かい斑点
   for (let i = 0; i < 2500; i++) {
     ctx.fillStyle = `rgba(${r() < 0.5 ? '255,255,220' : '20,40,10'},${0.04 + r() * 0.05})`;
     ctx.fillRect(r() * w, r() * hgt, 2, 2);
   }
-  // 主脈
   ctx.strokeStyle = t.vein;
   ctx.lineCap = 'round';
-  ctx.lineWidth = w * 0.012;
-  ctx.beginPath();
-  ctx.moveTo(sx(0), sy(-5.4));
-  ctx.lineTo(sx(0), sy(4.6));
-  ctx.stroke();
-  // 側脈
-  ctx.lineWidth = w * 0.005;
-  for (let i = 0; i < 9; i++) {
-    const y0 = -3.6 + i * 0.95;
-    for (const side of [-1, 1]) {
-      ctx.globalAlpha = 0.75;
-      ctx.beginPath();
-      ctx.moveTo(sx(0), sy(y0));
-      ctx.quadraticCurveTo(sx(side * 1.2), sy(y0 + 0.9), sx(side * 2.6), sy(y0 + 1.6));
-      ctx.stroke();
+  const line = (x0: number, y0: number, x1: number, y1: number, width: number, alpha: number, cx?: number, cy?: number) => {
+    ctx.globalAlpha = alpha;
+    ctx.lineWidth = width * unit;
+    ctx.beginPath();
+    ctx.moveTo(sx(x0), sy(y0));
+    if (cx !== undefined && cy !== undefined) ctx.quadraticCurveTo(sx(cx), sy(cy), sx(x1), sy(y1));
+    else ctx.lineTo(sx(x1), sy(y1));
+    ctx.stroke();
+  };
+  if (species === 'nasturtium' || species === 'momiji') {
+    // 掌状・盾状：中心（葉柄のつけ根）から放射状に葉脈が広がる
+    const ox = 0;
+    const oy = species === 'momiji' ? -0.3 : 0.1;
+    const n = species === 'momiji' ? 7 : 9;
+    for (let i = 0; i < n; i++) {
+      const a = Math.PI / 2 + (i / n) * 2 * Math.PI;
+      const len = species === 'momiji' ? 3.3 : 3.0;
+      const ex = ox + Math.cos(a) * len;
+      const ey = oy + Math.sin(a) * len;
+      line(ox, oy, ex, ey, 0.09, 0.85, ox + Math.cos(a + 0.12) * len * 0.5, oy + Math.sin(a + 0.12) * len * 0.5);
       // 細脈
-      ctx.globalAlpha = 0.3;
-      ctx.lineWidth = w * 0.0025;
-      for (let k = 0; k < 3; k++) {
-        const px = side * (0.5 + k * 0.6);
-        const py = y0 + 0.35 + k * 0.45;
-        ctx.beginPath();
-        ctx.moveTo(sx(px), sy(py));
-        ctx.lineTo(sx(px + side * 0.4), sy(py - 0.4));
-        ctx.stroke();
+      for (let k = 1; k <= 3; k++) {
+        const f = k / 4;
+        const px = ox + Math.cos(a) * len * f;
+        const py = oy + Math.sin(a) * len * f;
+        for (const side of [-1, 1]) {
+          const b = a + side * 0.9;
+          line(px, py, px + Math.cos(b) * 0.55, py + Math.sin(b) * 0.55, 0.03, 0.35);
+        }
       }
-      ctx.lineWidth = w * 0.005;
+    }
+    ctx.globalAlpha = 0.6;
+    ctx.fillStyle = t.vein;
+    ctx.beginPath();
+    ctx.arc(sx(ox), sy(oy), 0.12 * unit, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    // 羽状：主脈と側脈
+    const tip = species === 'yanagi' ? 5.3 : 4.6;
+    const base = species === 'yanagi' ? -5.3 : -5.4;
+    const tipG = ctx.createLinearGradient(0, sy(tip), 0, sy(tip * 0.2));
+    tipG.addColorStop(0, t.tip);
+    tipG.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.globalAlpha = 0.5;
+    ctx.fillStyle = tipG;
+    ctx.fillRect(0, 0, w, hgt);
+    line(0, base, 0, tip, species === 'yanagi' ? 0.08 : 0.1, 1);
+    const count = species === 'yanagi' ? 16 : 9;
+    const reach = species === 'yanagi' ? 0.9 : 2.6;
+    for (let i = 0; i < count; i++) {
+      const y0 = base + 1.2 + (i * (tip - base - 2)) / count;
+      for (const side of [-1, 1]) {
+        line(0, y0, side * reach, y0 + reach * 0.6 + 0.4, 0.045, 0.75, side * reach * 0.45, y0 + reach * 0.35);
+      }
     }
   }
   ctx.globalAlpha = 1;
-  const tex = toTexture(c, false);
-  return tex;
+  return toTexture(c, false);
+}
+
+/** 種類のおおよその色（サムネイルや 2D 表示用） */
+export function speciesColor(species: SpeciesId, tone: LeafTone = 'mine'): string {
+  return PALETTES[species][tone].base;
 }
 
 /** 空のグラデーション用の色 */

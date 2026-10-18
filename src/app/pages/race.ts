@@ -1,5 +1,6 @@
 import {
-  BOT_LEAVES, COURSE_IDS, COURSE_PRESETS, SIM, generateCourse, shapeHash, simulateRace, windAt, type Course, ticksToSeconds, validateLeaf,
+  BOT_LEAVES, COURSE_IDS, COURSE_PRESETS, SIM, generateCourse, isSpeciesId, shapeHash, simulateRace, windAt, type Course,
+  type SpeciesId, ticksToSeconds, validateLeaf,
   type LeafRunResult, type Polygon, type RaceOutcome, type RaceResult,
 } from '../../../packages/sim-core/src/index.ts';
 import {
@@ -20,6 +21,8 @@ interface RaceSetup {
   seed: number;
   me: Polygon;
   opp: Polygon;
+  meSpecies: SpeciesId;
+  oppSpecies: SpeciesId;
   oppName: string;
 }
 
@@ -147,7 +150,8 @@ export function racePage(router: Router): Page {
   // ---------------------------------------------------------------- 開始
 
   async function startPractice(botId: string | null, courseId = 'random'): Promise<void> {
-    const me = loadDraft().polygon;
+    const draft = loadDraft();
+    const me = draft.polygon;
     if (!validateLeaf(me).ok) {
       toast('編集中の葉っぱが登録条件を満たしていません');
       router.go('/editor', true);
@@ -157,7 +161,10 @@ export function racePage(router: Router): Page {
       ? BOT_LEAVES[Math.floor(Math.random() * BOT_LEAVES.length)]
       : BOT_LEAVES.find((b) => b.id === botId) ?? BOT_LEAVES[0];
     const cid = !courseId || courseId === 'random' ? COURSE_IDS[Math.floor(Math.random() * COURSE_IDS.length)] : courseId;
-    await play({ ranked: false, courseId: cid, seed: (Math.random() * 4294967296) >>> 0, me, opp: bot.polygon, oppName: `${bot.name}（練習）` }, null);
+    await play({
+      ranked: false, courseId: cid, seed: (Math.random() * 4294967296) >>> 0,
+      me, opp: bot.polygon, meSpecies: draft.species, oppSpecies: bot.species, oppName: `${bot.name}（練習）`,
+    }, null);
   }
 
   async function startRanked(btn: HTMLButtonElement, registerDraft: boolean, name: string, currentName: string | null): Promise<void> {
@@ -175,7 +182,8 @@ export function racePage(router: Router): Page {
     try {
       if (name && name !== currentName) await updateDisplayName(name);
       if (registerDraft) {
-        await registerLeaf(loadDraft().polygon);
+        const d = loadDraft();
+        await registerLeaf(d.polygon, d.species);
         btn.textContent = '相手を探しています…';
       }
       const key = crypto.randomUUID();
@@ -186,7 +194,8 @@ export function racePage(router: Router): Page {
         const bot = BOT_LEAVES[Math.floor(Math.random() * BOT_LEAVES.length)];
         await play({
           ranked: false, courseId: COURSE_IDS[Math.floor(Math.random() * COURSE_IDS.length)], seed: (Math.random() * 4294967296) >>> 0,
-          me: leaf?.polygon ?? loadDraft().polygon, opp: bot.polygon, oppName: `${bot.name}（練習）`,
+          me: leaf?.polygon ?? loadDraft().polygon, opp: bot.polygon,
+          meSpecies: leaf?.species ?? loadDraft().species, oppSpecies: bot.species, oppName: `${bot.name}（練習）`,
         }, null);
         return;
       }
@@ -195,6 +204,8 @@ export function racePage(router: Router): Page {
       await play({
         ranked: true, raceId: race.id, courseId: race.course_id, seed: race.seed,
         me: race.challenger_shape, opp: race.defender_shape, oppName: race.defender_name,
+        meSpecies: isSpeciesId(race.challenger_species) ? race.challenger_species : 'sakura',
+        oppSpecies: isSpeciesId(race.defender_species) ? race.defender_species : 'sakura',
       }, official);
     } catch (e) {
       toast(errorText(e), 4000);
@@ -233,7 +244,10 @@ export function racePage(router: Router): Page {
       return;
     }
     scene.setCourse(course);
-    scene.setLeaves([{ polygon: setup.me, tone: 'fresh' }, { polygon: setup.opp, tone: 'autumn' }]);
+    scene.setLeaves([
+      { polygon: setup.me, species: setup.meSpecies, tone: 'mine' },
+      { polygon: setup.opp, species: setup.oppSpecies, tone: 'rival' },
+    ]);
     scene.setCameraMode('follow');
     player = new ReplayPlayer(scene, replay!, result);
 

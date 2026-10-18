@@ -1,5 +1,7 @@
 import { deleteAccount, errorText, getMyProfile, online, updateDisplayName } from '../../api/client.ts';
 import { drawLeafThumb } from '../context.ts';
+import { speciesColor } from '../../render/textures.ts';
+import { getSpecies } from '../../../packages/sim-core/src/index.ts';
 import { h, toast } from '../dom.ts';
 import { nameInput, nameProblem } from '../name-field.ts';
 import type { Page, Router } from '../router.ts';
@@ -75,7 +77,7 @@ export function accountPage(router: Router): Page {
           h('h2', {}, '登録中の葉っぱ'),
           leaf
             ? h('div', { style: 'display:flex;gap:16px;align-items:center;flex-wrap:wrap' }, thumb,
-              h('div', {}, h('p', {}, `バージョン ${leaf.version}`), h('p', { class: 'muted' }, `更新：${new Date(leaf.updated_at).toLocaleString('ja-JP')}`),
+              h('div', {}, h('p', {}, `${getSpecies(leaf.species).name}・バージョン ${leaf.version}`), h('p', { class: 'muted' }, `更新：${new Date(leaf.updated_at).toLocaleString('ja-JP')}`),
                 h('a', { href: '/editor', 'data-link': true, class: 'btn' }, '作り直す')))
             : h('div', {}, h('p', {}, 'まだ登録していません。'), h('a', { href: '/editor', 'data-link': true, class: 'btn primary' }, '葉っぱを作る')),
         ),
@@ -97,7 +99,7 @@ export function accountPage(router: Router): Page {
           }, 'データを削除'),
         ),
       );
-      if (leaf) requestAnimationFrame(() => drawLeafThumb(thumb, leaf.polygon));
+      if (leaf) requestAnimationFrame(() => drawLeafThumb(thumb, leaf.polygon, speciesColor(leaf.species)));
     },
   };
 }

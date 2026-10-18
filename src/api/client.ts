@@ -4,7 +4,7 @@
  * ブラウザに置くのは公開 anon キーだけ。service_role キーは絶対に置かない。
  */
 import { createClient, type Session, type SupabaseClient } from '@supabase/supabase-js';
-import type { Polygon } from '../../packages/sim-core/src/index.ts';
+import { isSpeciesId, type Polygon, type SpeciesId } from '../../packages/sim-core/src/index.ts';
 
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
@@ -116,12 +116,15 @@ export async function getMyProfile(): Promise<{ profile: Profile | null; stats: 
   const [p, st, l] = await Promise.all([
     sb.from('profiles').select('user_id,display_name').eq('user_id', uid).maybeSingle(),
     sb.from('stats').select('current_streak,best_streak,weekly_best_streak,defense_wins,defense_losses,challenger_wins,challenger_losses,draws').eq('user_id', uid).maybeSingle(),
-    sb.from('leaves').select('version,polygon_json,shape_hash,updated_at').eq('user_id', uid).maybeSingle(),
+    sb.from('leaves').select('version,polygon_json,shape_hash,species,updated_at').eq('user_id', uid).maybeSingle(),
   ]);
   return {
     profile: p.data as Profile | null,
     stats: st.data as Stats | null,
-    leaf: l.data ? { version: l.data.version, polygon: l.data.polygon_json as Polygon, shape_hash: l.data.shape_hash, updated_at: l.data.updated_at } : null,
+    leaf: l.data ? {
+      version: l.data.version, polygon: l.data.polygon_json as Polygon, shape_hash: l.data.shape_hash,
+      species: isSpeciesId(l.data.species) ? l.data.species : 'sakura', updated_at: l.data.updated_at,
+    } : null,
   };
 }
 
@@ -141,12 +144,13 @@ export interface MyLeaf {
   version: number;
   polygon: Polygon;
   shape_hash: string;
+  species: SpeciesId;
   updated_at: string;
 }
 
 /** POST /leaf/register */
-export async function registerLeaf(polygon: Polygon): Promise<{ version: number; shape_hash: string }> {
-  return call('leaf-register', { polygon });
+export async function registerLeaf(polygon: Polygon, species: SpeciesId): Promise<{ version: number; shape_hash: string }> {
+  return call('leaf-register', { polygon, species });
 }
 
 // ---------- 対戦 ----------
@@ -158,6 +162,8 @@ export interface RankedRace {
   sim_version: string;
   challenger_shape: Polygon;
   defender_shape: Polygon;
+  challenger_species: SpeciesId;
+  defender_species: SpeciesId;
   defender_name: string;
 }
 

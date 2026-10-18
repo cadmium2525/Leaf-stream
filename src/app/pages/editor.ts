@@ -1,10 +1,11 @@
 import {
-  LEAF_ERROR_MESSAGES, LEAF_RULES, area, perimeter, shapeHash, validateLeaf, type Polygon,
+  LEAF_ERROR_MESSAGES, LEAF_RULES, SPECIES, area, getSpecies, perimeter, shapeHash, validateLeaf,
 } from '../../../packages/sim-core/src/index.ts';
-import { LeafEditor } from '../../editor/editor.ts';
+import { LeafEditor, type EditorState } from '../../editor/editor.ts';
+import { speciesColor } from '../../render/textures.ts';
 import { PreviewChannel } from '../../editor/preview.ts';
 import { errorText, getMyProfile, online, registerLeaf } from '../../api/client.ts';
-import { h, toast } from '../dom.ts';
+import { h, hideToast, toast } from '../dom.ts';
 import { loadDraft, saveDraft } from '../state.ts';
 import type { Page, Router } from '../router.ts';
 
@@ -14,6 +15,7 @@ export function editorPage(router: Router): Page {
   let preview: PreviewChannel | null = null;
   let registeredHash: string | null = null;
   let registeredVersion: number | null = null;
+  let registeredSpecies: string | null = null;
   const onKey = (e: KeyboardEvent) => {
     if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'z') return;
     e.preventDefault();
@@ -44,12 +46,32 @@ export function editorPage(router: Router): Page {
       const registerBtn = h('button', { class: 'btn primary' }, 'この葉っぱを登録');
       const practiceBtn = h('button', { class: 'btn' }, 'この葉で練習レース');
       const previewCanvas = h('canvas', { class: 'preview-canvas', 'aria-label': 'プレビュー水路' });
-      const previewInfo = h('p', { class: 'muted' }, 'プレビュー水路を流れています（白はそのままの葉）');
+      const previewInfo = h('p', { class: 'muted' }, 'プレビュー水路を流れています（白は切る前の形）');
+      const speciesRow = h('div', { class: 'species-row' });
+      const speciesDesc = h('p', { class: 'muted' }, '');
+      const renderSpecies = (cur: string) => {
+        speciesRow.replaceChildren(...SPECIES.map((sp) => h('button', {
+          class: `btn small species-btn${sp.id === cur ? ' active' : ''}`,
+          style: `--leaf:${speciesColor(sp.id)}`,
+          'aria-pressed': sp.id === cur ? 'true' : 'false',
+          onclick: () => {
+            if (!editor || sp.id === editor.state.species) return;
+            if (editor.state.cuts > 0 && !confirm(`${sp.name}に変えると、切る前の形からやり直します（元に戻すで戻せます）。`)) return;
+            editor.setSpecies(sp.id);
+          },
+        }, h('span', { class: 'dot' }), sp.name)));
+        speciesDesc.textContent = getSpecies(cur).description;
+      };
 
       root.append(
         h('div', { class: 'editor' },
           h('div', { class: 'editor-canvas-wrap' }, canvas, h('div', { class: 'editor-hint' }, tip, chooseRow)),
           h('aside', { class: 'editor-side' },
+            h('section', { class: 'panel' },
+              h('h2', {}, '葉っぱの種類'),
+              speciesRow,
+              speciesDesc,
+            ),
             h('section', { class: 'panel' },
               h('h2', {}, '葉っぱを切る'),
               h('p', { class: 'muted' }, '形が流れ方を変えます。細長い・幅広・切れ込み…いろいろ試してみてください。'),
@@ -62,11 +84,14 @@ export function editorPage(router: Router): Page {
         ),
       );
 
-      const update = (p: Polygon, cuts: number) => {
-        saveDraft({ polygon: p, cuts });
+      const update = (st: EditorState) => {
+        const { polygon: p, cuts, species } = st;
+        saveDraft({ polygon: p, cuts, species });
+        renderSpecies(species);
         const v = validateLeaf(p);
         const a = area(p);
         metrics.replaceChildren(
+          h('dt', {}, '種類'), h('dd', {}, getSpecies(species).name),
           h('dt', {}, '面積'), h('dd', {}, `${a.toFixed(1)} cm²`),
           h('dt', {}, '頂点'), h('dd', {}, `${p.length} / ${LEAF_RULES.maxVertices}`),
           h('dt', {}, '切った回数'), h('dd', {}, `${cuts} / ${LEAF_RULES.maxCuts}`),
@@ -79,18 +104,19 @@ export function editorPage(router: Router): Page {
         practiceBtn.disabled = !v.ok;
         undoBtn.disabled = !editor?.canUndo;
         redoBtn.disabled = !editor?.canRedo;
-        const same = registeredHash === shapeHash(p);
+        const same = registeredHash === shapeHash(p) && registeredSpecies === species;
         if (!online) regInfo.textContent = 'サーバー未設定のため、登録はできません（練習は遊べます）。';
         else if (registeredVersion === null) regInfo.textContent = 'まだ登録していません。登録するとランク戦で使われます（ユーザー登録は不要）。';
         else regInfo.textContent = same ? `登録中の葉っぱ（v${registeredVersion}）と同じ形です。` : `登録中は v${registeredVersion}。この形に更新できます。`;
-        preview?.setLeaf(p);
+        preview?.setLeaf(p, getSpecies(species).polygon);
       };
 
       editor = new LeafEditor(canvas, draft);
-      editor.onChange = (s) => update(s.polygon, s.cuts);
+      editor.onChange = (s) => update(s);
       editor.onMessage = (m) => toast(m);
       editor.onModeChange = (c) => {
         chooseRow.classList.toggle('hidden', !c);
+        if (!c) hideToast();
         tip.textContent = c ? '残す方をタップ' : '葉の外から外へ、なぞって切る';
         undoBtn.disabled = !editor?.canUndo;
         redoBtn.disabled = !editor?.canRedo;
@@ -101,7 +127,7 @@ export function editorPage(router: Router): Page {
         previewInfo.textContent = `あなた ${f(a)}／そのままの葉 ${f(b)}（1 走・参考記録）`;
       };
       preview.start();
-      update(draft.polygon, draft.cuts);
+      update(editor.state);
       window.addEventListener('keydown', onKey);
 
       practiceBtn.addEventListener('click', () => router.go('/race?mode=practice'));
@@ -110,14 +136,15 @@ export function editorPage(router: Router): Page {
           toast(errorText(new Error('offline')));
           return;
         }
-        const p = editor!.state.polygon;
+        const st = editor!.state;
         registerBtn.disabled = true;
         try {
-          const r = await registerLeaf(p);
+          const r = await registerLeaf(st.polygon, st.species);
           registeredHash = r.shape_hash;
           registeredVersion = r.version;
+          registeredSpecies = st.species;
           toast(`登録しました（v${r.version}）`);
-          update(p, editor!.state.cuts);
+          update(editor!.state);
         } catch (e) {
           toast(errorText(e));
         } finally {
@@ -130,7 +157,8 @@ export function editorPage(router: Router): Page {
           if (!leaf) return;
           registeredHash = leaf.shape_hash;
           registeredVersion = leaf.version;
-          if (editor) update(editor.state.polygon, editor.state.cuts);
+          registeredSpecies = leaf.species;
+          if (editor) update(editor.state);
         }).catch(() => undefined);
       }
     },

@@ -16,11 +16,17 @@ export function homePage(): Page {
     demoIndex++;
     const courseId = COURSE_IDS[demoIndex % COURSE_IDS.length];
     const seed = (demoIndex * 2654435761) >>> 0;
-    const a = demoIndex % 2 === 0 ? loadDraft().polygon : BOT_LEAVES[demoIndex % BOT_LEAVES.length].polygon;
-    const b = BOT_LEAVES[(demoIndex * 7 + 3) % BOT_LEAVES.length].polygon;
-    const { result, replay } = simulateRace({ courseId, seed, challenger: a, defender: b }, true);
+    const draft = loadDraft();
+    const botA = BOT_LEAVES[demoIndex % BOT_LEAVES.length];
+    const botB = BOT_LEAVES[(demoIndex * 7 + 3) % BOT_LEAVES.length];
+    const mine = demoIndex % 2 === 0;
+    const a = mine ? draft.polygon : botA.polygon;
+    const { result, replay } = simulateRace({ courseId, seed, challenger: a, defender: botB.polygon }, true);
     scene.setCourse(replay!.course);
-    scene.setLeaves([{ polygon: a, tone: 'fresh' }, { polygon: b, tone: 'autumn' }]);
+    scene.setLeaves([
+      { polygon: a, species: mine ? draft.species : botA.species, tone: 'mine' },
+      { polygon: botB.polygon, species: botB.species, tone: 'rival' },
+    ]);
     scene.setCameraMode('orbit');
     player = new ReplayPlayer(scene, replay!, result, { countdown: false });
     player.speed = 0.8;

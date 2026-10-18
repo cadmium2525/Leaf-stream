@@ -1,5 +1,5 @@
 /** 端末内に保存する設定・下書き（localStorage）。サーバーの値ではない */
-import { defaultLeaf, normalizePolygon, validateLeaf, type Polygon } from '../../packages/sim-core/src/index.ts';
+import { getSpecies, isSpeciesId, normalizePolygon, validateLeaf, type Polygon, type SpeciesId } from '../../packages/sim-core/src/index.ts';
 
 export type Quality = 'auto' | 'high' | 'standard' | 'eco';
 
@@ -12,6 +12,7 @@ export interface Settings {
 export interface LeafDraft {
   polygon: Polygon;
   cuts: number;
+  species: SpeciesId;
 }
 
 const KEY_SETTINGS = 'leafstream.settings.v1';
@@ -50,13 +51,14 @@ export function onSettingsChange(fn: () => void): () => void {
 }
 
 export function loadDraft(): LeafDraft {
-  const d = load<LeafDraft>(KEY_DRAFT, { polygon: defaultLeaf(), cuts: 0 });
-  // 壊れた下書きは初期形状に戻す
-  const p = normalizePolygon(d.polygon ?? []);
-  if (p.length < 3 || !validateLeaf(p).errors.every((e) => e === 'too_thin' || e === 'too_small')) {
-    return { polygon: defaultLeaf(), cuts: 0 };
-  }
-  return { polygon: p, cuts: Math.max(0, Math.min(99, d.cuts | 0)) };
+  const d = load<Partial<LeafDraft>>(KEY_DRAFT, {});
+  const species = isSpeciesId(d.species) ? d.species : 'sakura';
+  const fresh = { polygon: getSpecies(species).polygon, cuts: 0, species };
+  if (!d.polygon) return fresh;
+  // 壊れた下書きは元の形に戻す
+  const p = normalizePolygon(d.polygon);
+  if (p.length < 3 || !validateLeaf(p).errors.every((e) => e === 'too_thin' || e === 'too_small')) return fresh;
+  return { polygon: p, cuts: Math.max(0, Math.min(99, (d.cuts ?? 0) | 0)), species };
 }
 
 export function saveDraft(d: LeafDraft): void {

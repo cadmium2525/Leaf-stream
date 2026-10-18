@@ -387,3 +387,8 @@ label { display: block; font-size: 13px; color: var(--ink-soft); margin: 10px 0 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
 }
+
+/* 葉っぱの種類 */
+.species-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.species-btn .dot { width: 12px; height: 12px; border-radius: 50% 50% 50% 0; background: var(--leaf); display: inline-block; transform: rotate(-45deg); }
+.species-btn.active { border-color: var(--leaf-deep); background: #eef5e4; font-weight: 700; }

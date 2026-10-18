@@ -6,3 +6,4 @@ export * from './sim.ts';
 export * from './stats.ts';
 export * from './bots.ts';
 export * from './replay.ts';
+export * from './species.ts';

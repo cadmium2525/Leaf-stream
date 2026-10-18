@@ -40,6 +40,8 @@ Deno.serve(handler(async (req) => {
       sim_version: data.sim_version,
       challenger_shape: data.challenger_shape,
       defender_shape: data.defender_shape,
+      challenger_species: data.challenger_species,
+      defender_species: data.defender_species,
       challenger_leaf_version: data.challenger_leaf_version,
       defender_leaf_version: data.defender_leaf_version,
       defender_name: opp?.display_name ?? '???',

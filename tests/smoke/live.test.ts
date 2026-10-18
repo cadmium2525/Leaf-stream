@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs';
 import { afterAll, describe, expect, test } from 'vitest';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { BOT_LEAVES, defaultLeaf, simulateRace, type Polygon } from '../../packages/sim-core/src/index.ts';
+import { BOT_LEAVES, getSpecies, simulateRace, type Polygon } from '../../packages/sim-core/src/index.ts';
 
 const env = Object.fromEntries(
   readFileSync('.env.production', 'utf8').split('\n')
@@ -24,7 +24,7 @@ interface Player {
 
 const players: Player[] = [];
 
-async function newPlayer(name: string, polygon: Polygon): Promise<Player> {
+async function newPlayer(name: string, polygon: Polygon, species = 'sakura'): Promise<Player> {
   const sb = createClient(URL, KEY, { auth: { persistSession: false, autoRefreshToken: false } });
   const { data, error } = await sb.auth.signInAnonymously();
   if (error || !data.session) throw new Error(`匿名サインインに失敗：${error?.message}（Allow anonymous sign-ins は ON？）`);
@@ -41,8 +41,9 @@ async function newPlayer(name: string, polygon: Polygon): Promise<Player> {
   players.push(p);
   const { error: e2 } = await sb.from('profiles').update({ display_name: name }).eq('user_id', p.id);
   expect(e2, 'プロフィール名の更新').toBeNull();
-  const reg = await call('leaf-register', { polygon });
+  const reg = await call('leaf-register', { polygon, species });
   expect(reg.status, `leaf-register: ${JSON.stringify(reg.body)}`).toBe(200);
+  expect(reg.body.species).toBe(species);
   return p;
 }
 
@@ -63,7 +64,7 @@ describe.skipIf(!process.env.SMOKE)('本番スモークテスト', () => {
     const lb = await anon.rpc('get_leaderboard', { p_sort: 'best', p_limit: 5, p_offset: 0 });
     expect(lb.error, JSON.stringify(lb.error)).toBeNull();
 
-    const a = await newPlayer('スモークA', defaultLeaf());
+    const a = await newPlayer('スモークA', getSpecies('momiji').polygon, 'momiji');
     await newPlayer('スモークB', BOT_LEAVES.find((b) => b.id === 'bot-slim')!.polygon);
 
     // 名前が付いている
@@ -78,8 +79,9 @@ describe.skipIf(!process.env.SMOKE)('本番スモークテスト', () => {
     // 挑戦 → 相手が決まり、スナップショットが返る
     const ch = await a.call('race-challenge', { idempotencyKey: crypto.randomUUID() });
     expect(ch.status, JSON.stringify(ch.body)).toBe(200);
-    const race = ch.body.race as { id: string; course_id: string; seed: number; challenger_shape: Polygon; defender_shape: Polygon };
+    const race = ch.body.race as { id: string; course_id: string; seed: number; challenger_shape: Polygon; defender_shape: Polygon; challenger_species: string };
     expect(race, '相手が見つからない').toBeTruthy();
+    expect(race.challenger_species).toBe('momiji');
 
     // サーバー確定
     const r1 = await a.call('race-resolve', { raceId: race.id });
