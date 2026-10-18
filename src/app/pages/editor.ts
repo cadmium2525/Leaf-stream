@@ -3,7 +3,7 @@ import {
 } from '../../../packages/sim-core/src/index.ts';
 import { LeafEditor } from '../../editor/editor.ts';
 import { PreviewChannel } from '../../editor/preview.ts';
-import { errorText, getMyProfile, getSession, online, registerLeaf } from '../../api/client.ts';
+import { errorText, getMyProfile, online, registerLeaf } from '../../api/client.ts';
 import { h, toast } from '../dom.ts';
 import { loadDraft, saveDraft } from '../state.ts';
 import type { Page, Router } from '../router.ts';
@@ -81,7 +81,7 @@ export function editorPage(router: Router): Page {
         redoBtn.disabled = !editor?.canRedo;
         const same = registeredHash === shapeHash(p);
         if (!online) regInfo.textContent = 'サーバー未設定のため、登録はできません（練習は遊べます）。';
-        else if (registeredVersion === null) regInfo.textContent = 'まだ登録していません。登録するとランク戦で使われます。';
+        else if (registeredVersion === null) regInfo.textContent = 'まだ登録していません。登録するとランク戦で使われます（ユーザー登録は不要）。';
         else regInfo.textContent = same ? `登録中の葉っぱ（v${registeredVersion}）と同じ形です。` : `登録中は v${registeredVersion}。この形に更新できます。`;
         preview?.setLeaf(p);
       };
@@ -108,11 +108,6 @@ export function editorPage(router: Router): Page {
       registerBtn.addEventListener('click', async () => {
         if (!online) {
           toast(errorText(new Error('offline')));
-          return;
-        }
-        if (!(await getSession())) {
-          toast('登録にはサインインが必要です');
-          router.go('/account?next=editor');
           return;
         }
         const p = editor!.state.polygon;

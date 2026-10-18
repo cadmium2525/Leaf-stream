@@ -8,7 +8,14 @@ import { accountPage } from './app/pages/account.ts';
 import { aboutPage } from './app/pages/about.ts';
 import { setupSettingsPanel } from './app/settings-panel.ts';
 import { armAudio, getScene } from './app/context.ts';
-import { getSession, onAuthChange, online } from './api/client.ts';
+
+import { appPath, withBase } from './app/base.ts';
+
+// index.html のナビゲーションにも配信パスを付ける
+document.querySelectorAll<HTMLAnchorElement>('a[data-link]').forEach((a) => {
+  const href = a.getAttribute('href');
+  if (href?.startsWith('/')) a.setAttribute('href', withBase(href));
+});
 
 const view = document.getElementById('view')!;
 const router = new Router(view);
@@ -21,7 +28,7 @@ router
   .add('/about', aboutPage)
   .changed((path, page) => {
     document.querySelectorAll<HTMLAnchorElement>('#topbar nav a').forEach((a) => {
-      a.classList.toggle('active', new URL(a.href).pathname === path);
+      a.classList.toggle('active', appPath(new URL(a.href).pathname) === path);
     });
     // 3D を使わない画面では描画ループを止めて電池を節約
     const scene = getScene();
@@ -31,10 +38,4 @@ router
 
 setupSettingsPanel();
 armAudio();
-const setNav = (signedIn: boolean) => {
-  const nav = document.getElementById('nav-account');
-  if (nav) nav.textContent = online && !signedIn ? 'サインイン' : 'アカウント';
-};
-onAuthChange((s) => setNav(!!s));
-void getSession().then((s) => setNav(!!s));
 void router.render();

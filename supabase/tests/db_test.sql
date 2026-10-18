@@ -152,7 +152,7 @@ select pg_temp.assert((select display_name from profiles where user_id = '000000
 -- ランキング（anon で読める）
 set role anon;
 select pg_temp.assert((select count(*) from get_leaderboard('best', 10, 0)) = 2, 'ランキング取得');
-select pg_temp.assert((select display_name from get_leaderboard('best', 10, 0) where rank = 1) = '名無しの葉っぱ', 'best 順');
+select pg_temp.assert((select display_name from get_leaderboard('best', 10, 0) where rank = 1) like '葉っぱ____', 'best 順・仮の名前');
 select pg_temp.assert((select count(*) from get_leaderboard('best', 100000, 0)) <= 50, '取得上限');
 reset role;
 

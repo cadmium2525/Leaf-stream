@@ -25,7 +25,9 @@ export class HttpError extends Error {
 
 /** service_role のクライアント。キーはサーバー関数のシークレットにのみ存在する */
 export function adminClient(): SupabaseClient {
-  return createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, {
+  const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_SECRET_KEY');
+  if (!key) throw new HttpError(500, 'server_misconfigured');
+  return createClient(Deno.env.get('SUPABASE_URL')!, key, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 }

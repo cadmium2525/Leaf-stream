@@ -1,4 +1,6 @@
 /** 小さな DOM ヘルパー。文字列はすべて textContent で入れる（XSS 対策） */
+import { withBase } from './base.ts';
+
 type Attrs = Record<string, string | number | boolean | EventListener | undefined>;
 type Child = Node | string | number | null | undefined | false;
 
@@ -9,6 +11,8 @@ export function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Attrs = 
     if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2), v as EventListener);
     else if (k === 'class') el.className = String(v);
     else if (v === true) el.setAttribute(k, '');
+    // アプリ内リンクは配信パスを付ける
+    else if (k === 'href' && 'data-link' in attrs && String(v).startsWith('/')) el.setAttribute(k, withBase(String(v)));
     else el.setAttribute(k, String(v));
   }
   for (const c of children) {

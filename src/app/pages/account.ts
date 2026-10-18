@@ -1,5 +1,6 @@
 import {
-  deleteAccount, errorText, getMyProfile, getSession, online, signInWithEmail, signOut, updateDisplayName,
+  deleteAccount, ensureSession, errorText, getMyProfile, getSession, isGuest, linkEmail, online, signInWithEmail, signOut,
+  updateDisplayName,
 } from '../../api/client.ts';
 import { drawLeafThumb } from '../context.ts';
 import { h, toast } from '../dom.ts';
@@ -9,7 +10,7 @@ import type { Page, Router } from '../router.ts';
 export function accountPage(router: Router): Page {
   return {
     paper: true,
-    async mount(root, params) {
+    async mount(root) {
       const wrap = h('div', { class: 'page' });
       root.append(wrap);
       if (!online) {
@@ -21,27 +22,33 @@ export function accountPage(router: Router): Page {
       }
       const session = await getSession();
       if (!session) {
-        const email = h('input', { type: 'email', id: 'email', placeholder: 'you@example.com', autocomplete: 'email', required: true });
         const sent = h('p', { class: 'muted' }, '');
-        const form = h('form', {
-          onsubmit: async (e: Event) => {
-            e.preventDefault();
-            const v = (email as HTMLInputElement).value.trim();
-            if (!v) return;
-            try {
+        wrap.append(
+          h('section', { class: 'panel' },
+            h('h1', {}, 'はじめる'),
+            h('p', {}, 'ユーザー登録なしで、すぐにランク戦に参加できます。記録はこの端末（ブラウザ）に紐づきます。'),
+            h('div', { class: 'btn-row' }, h('button', {
+              class: 'btn primary', onclick: async () => {
+                try {
+                  await ensureSession();
+                  toast('ゲストとして始めました');
+                  router.go('/account', true);
+                } catch (e) {
+                  toast(errorText(e), 5000);
+                }
+              },
+            }, 'ゲストで始める')),
+            h('p', { class: 'muted' }, h('a', { href: '/about#privacy', 'data-link': true }, 'プライバシーポリシー'), 'に同意のうえご利用ください。'),
+          ),
+          h('section', { class: 'panel' },
+            h('h2', {}, 'メールで続きから'),
+            h('p', { class: 'muted' }, '以前メールアドレスを登録した人は、ここからサインインすると別の端末でも続きから遊べます。'),
+            emailForm('サインイン用リンクを送る', async (v) => {
               await signInWithEmail(v);
               sent.textContent = `${v} にサインイン用のリンクを送りました。メールを開いてリンクを押してください。`;
-            } catch (err) {
-              sent.textContent = errorText(err);
-            }
-          },
-        }, h('label', { for: 'email' }, 'メールアドレス'), email,
-        h('div', { class: 'btn-row', style: 'margin-top:12px' }, h('button', { class: 'btn primary', type: 'submit' }, 'サインイン用リンクを送る')), sent);
-        wrap.append(h('section', { class: 'panel' },
-          h('h1', {}, 'サインイン'),
-          h('p', {}, '葉っぱの登録とランク戦にはサインインが必要です。パスワードは不要で、メールに届くリンクから入れます。'),
-          form,
-          h('p', { class: 'muted' }, h('a', { href: '/about#privacy', 'data-link': true }, 'プライバシーポリシー'), 'に同意のうえご利用ください。')));
+            }, sent),
+          ),
+        );
         return;
       }
 
@@ -64,8 +71,11 @@ export function accountPage(router: Router): Page {
                 }
               },
             }, '名前を保存'),
-            h('button', { class: 'btn', onclick: async () => { await signOut(); router.go('/', true); } }, 'サインアウト')),
+            isGuest(session)
+              ? ''
+              : h('button', { class: 'btn', onclick: async () => { await signOut(); router.go('/', true); } }, 'サインアウト')),
         ),
+        isGuest(session) ? guestPanel() : '',
         h('section', { class: 'panel' },
           h('h2', {}, '戦績'),
           h('div', { class: 'stat-grid' },
@@ -104,7 +114,34 @@ export function accountPage(router: Router): Page {
         ),
       );
       if (leaf) requestAnimationFrame(() => drawLeafThumb(thumb, leaf.polygon));
-      if (params.get('next') === 'editor') toast('サインインしました。葉っぱを登録できます');
+
+      function guestPanel(): HTMLElement {
+        const msg = h('p', { class: 'muted' }, '');
+        return h('section', { class: 'panel' },
+          h('h2', {}, 'ゲストで遊んでいます'),
+          h('p', {}, 'ブラウザのデータを消したり別の端末に変えたりすると、この記録には戻れません。メールアドレスを登録すると、どの端末からでも続きから遊べます。'),
+          emailForm('メールアドレスを登録', async (v) => {
+            await linkEmail(v);
+            msg.textContent = `${v} に確認メールを送りました。メールのリンクを押すと登録が完了します。`;
+          }, msg),
+        );
+      }
     },
   };
+}
+
+function emailForm(label: string, submit: (email: string) => Promise<void>, msg: HTMLElement): HTMLFormElement {
+  const email = h('input', { type: 'email', placeholder: 'you@example.com', autocomplete: 'email', required: true, 'aria-label': 'メールアドレス' });
+  return h('form', {
+    onsubmit: async (e: Event) => {
+      e.preventDefault();
+      const v = email.value.trim();
+      if (!v) return;
+      try {
+        await submit(v);
+      } catch (err) {
+        msg.textContent = errorText(err);
+      }
+    },
+  }, email, h('div', { class: 'btn-row', style: 'margin-top:12px' }, h('button', { class: 'btn primary', type: 'submit' }, label)), msg);
 }

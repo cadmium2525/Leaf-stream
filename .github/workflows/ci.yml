@@ -26,31 +26,37 @@ jobs:
       - name: DB（マイグレーション・RLS・確定トランザクション）
         run: npm run test:db
       - run: npm run build
-        env:
-          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
-      - uses: actions/upload-artifact@v4
-        with:
-          name: dist
-          path: dist
-          retention-days: 3
 
-  deploy:
-    # Cloudflare Pages（Free）へ配信。シークレット未設定なら何もしない
+  pages:
+    # GitHub Pages へ公開（https://<owner>.github.io/<repo>/）
     needs: check
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: true
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          name: dist
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build（サブパス配信）
+        run: npm run build
+        env:
+          BASE_PATH: /${{ github.event.repository.name }}/
+      - name: SPA のフォールバック（直接開いた URL でもアプリを表示）
+        run: cp dist/index.html dist/404.html
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
           path: dist
-      - name: Deploy to Cloudflare Pages
-        if: env.CLOUDFLARE_API_TOKEN != ''
-        run: npx --yes wrangler@3 pages deploy dist --project-name "${{ vars.CF_PAGES_PROJECT || 'leaf-stream' }}" --branch main
-      - name: Skip
-        if: env.CLOUDFLARE_API_TOKEN == ''
-        run: echo "CLOUDFLARE_API_TOKEN が未設定のため配信をスキップしました"
+      - id: deployment
+        uses: actions/deploy-pages@v4

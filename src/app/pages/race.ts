@@ -1,10 +1,10 @@
 import {
-  BOT_LEAVES, COURSE_IDS, COURSE_PRESETS, SIM, generateCourse, simulateRace, ticksToSeconds, validateLeaf,
+  BOT_LEAVES, COURSE_IDS, COURSE_PRESETS, SIM, generateCourse, shapeHash, simulateRace, ticksToSeconds, validateLeaf,
   type LeafRunResult, type Polygon, type RaceOutcome, type RaceResult,
 } from '../../../packages/sim-core/src/index.ts';
 import {
-  ApiError, challenge, errorText, getMyProfile, getRaceDefender, getSession, online, rankedEnabled, reportUser,
-  resolveRace, type ResolvedRace,
+  ApiError, challenge, errorText, getMyProfile, getRaceDefender, getSession, isGuest, online, rankedEnabled, registerLeaf,
+  reportUser, resolveRace, type ResolvedRace,
 } from '../../api/client.ts';
 import { ambience, getScene } from '../context.ts';
 import { h, toast } from '../dom.ts';
@@ -106,24 +106,32 @@ export function racePage(router: Router): Page {
     const status = h('p', { class: 'muted' }, '確認中…');
     rankedCard.append(status);
     try {
-      const session = await getSession();
-      if (!session) {
-        status.replaceWith(h('div', { class: 'btn-row' }, h('a', { href: '/account', 'data-link': true, class: 'btn' }, 'サインインして参加')));
-        return;
-      }
-      const [{ leaf, stats }, enabled] = await Promise.all([getMyProfile(), rankedEnabled()]);
+      const [{ leaf, stats }, enabled, session] = await Promise.all([getMyProfile(), rankedEnabled(), getSession()]);
       if (!enabled) {
         status.textContent = 'ただいまランク戦の受付を停止しています。練習は遊べます。';
         return;
       }
+      const challengeBtn = (label: string, registerDraft: boolean, primary = true) => h('button', {
+        class: `btn${primary ? ' primary' : ''}`,
+        disabled: registerDraft && !draftOk,
+        onclick: (e: Event) => void startRanked(e.currentTarget as HTMLButtonElement, registerDraft),
+      }, label);
       if (!leaf) {
-        status.replaceWith(h('div', {}, h('p', {}, '葉っぱがまだ登録されていません。'),
-          h('a', { href: '/editor', 'data-link': true, class: 'btn' }, '葉っぱを登録する')));
+        status.replaceWith(...([
+          h('p', {}, 'ユーザー登録なしで参加できます。いま編集中の葉っぱを登録して挑戦します。'),
+          h('div', { class: 'btn-row' }, challengeBtn('この葉っぱで挑戦', true), h('a', { href: '/editor', 'data-link': true, class: 'btn' }, '先に形を変える')),
+          !session || isGuest(session)
+            ? h('p', { class: 'muted' }, 'ゲストとして記録されます。アカウント画面でメールを登録すると、他の端末でも続きから遊べます。')
+            : null,
+        ] as (HTMLElement | null)[]).filter((x): x is HTMLElement => x !== null));
         return;
       }
+      const draftDiffers = shapeHash(draft) !== leaf.shape_hash;
       status.replaceWith(
         h('p', {}, `現在 ${stats?.current_streak ?? 0} 連勝（最高 ${stats?.best_streak ?? 0}）・登録中の葉 v${leaf.version}`),
-        h('div', { class: 'btn-row' }, h('button', { class: 'btn primary', onclick: (e: Event) => void startRanked(e.currentTarget as HTMLButtonElement) }, 'ランダムな相手に挑戦')),
+        h('div', { class: 'btn-row' },
+          challengeBtn('ランダムな相手に挑戦', false),
+          draftDiffers && draftOk ? challengeBtn('編集中の形に更新して挑戦', true, false) : ''),
       );
     } catch (e) {
       status.textContent = errorText(e);
@@ -146,10 +154,15 @@ export function racePage(router: Router): Page {
     await play({ ranked: false, courseId: cid, seed: (Math.random() * 4294967296) >>> 0, me, opp: bot.polygon, oppName: `${bot.name}（練習）` }, null);
   }
 
-  async function startRanked(btn: HTMLButtonElement): Promise<void> {
+  async function startRanked(btn: HTMLButtonElement, registerDraft: boolean): Promise<void> {
+    const label = btn.textContent ?? '';
     btn.disabled = true;
-    btn.textContent = '相手を探しています…';
+    btn.textContent = registerDraft ? '葉っぱを登録しています…' : '相手を探しています…';
     try {
+      if (registerDraft) {
+        await registerLeaf(loadDraft().polygon);
+        btn.textContent = '相手を探しています…';
+      }
       const key = crypto.randomUUID();
       const { race } = await challenge(key);
       if (!race) {
@@ -171,7 +184,7 @@ export function racePage(router: Router): Page {
     } catch (e) {
       toast(errorText(e), 4000);
       btn.disabled = false;
-      btn.textContent = 'ランダムな相手に挑戦';
+      btn.textContent = label;
     }
   }
 

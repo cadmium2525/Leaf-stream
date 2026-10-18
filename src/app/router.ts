@@ -1,4 +1,5 @@
 /** History API ベースの最小ルーター */
+import { appPath, withBase } from './base.ts';
 export interface Page {
   /** body に paper クラスを付けて 3D 背景を止める */
   paper?: boolean;
@@ -21,7 +22,7 @@ export class Router {
       const url = new URL(a.href);
       if (url.origin !== location.origin) return;
       e.preventDefault();
-      this.go(url.pathname + url.search);
+      this.go(appPath(url.pathname) + url.search + url.hash);
     });
   }
 
@@ -35,15 +36,17 @@ export class Router {
     return this;
   }
 
+  /** to はアプリ内のパス（"/race?mode=practice" など） */
   go(to: string, replace = false): void {
-    if (to === location.pathname + location.search && !replace) return;
-    if (replace) history.replaceState(null, '', to);
-    else history.pushState(null, '', to);
+    const url = withBase(to);
+    if (url === location.pathname + location.search && !replace) return;
+    if (replace) history.replaceState(null, '', url);
+    else history.pushState(null, '', url);
     void this.render();
   }
 
   async render(): Promise<void> {
-    const path = location.pathname.replace(/\/+$/, '') || '/';
+    const path = appPath(location.pathname);
     const factory = this.routes.get(path) ?? this.routes.get('/')!;
     this.current?.unmount?.();
     this.root.replaceChildren();

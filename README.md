@@ -6,9 +6,12 @@
 - 相手がオンラインでなくても、他の人の登録葉っぱとランダムに対戦できる
 - 左右のスタート位置を入れ替えた 2 走の合計時間で勝敗。結果はサーバーが確定
 - 連勝は「自分から挑戦したレース」だけで増減。挑戦された側は防衛記録のみ
+- ユーザー登録なしで遊べる（初回の挑戦時に自動でゲストになる。あとからメールを紐づけて引き継ぎ可能）
 - 月額 0 円（広告・課金・独自ドメインなし）で運用できる構成
 
 企画書・開発指示書（版数 1.0／2026-10-18）の内容を実装しています。
+
+**公開手順（GitHub Pages ＋ Supabase、ブラウザだけで完結）は [docs/SETUP.md](docs/SETUP.md) を参照。**
 
 ## すぐ遊ぶ（ローカル）
 
@@ -27,7 +30,7 @@ npm run dev        # http://localhost:5173
 | `/editor` | 切断、Undo/Redo、形状検証、プレビュー水路、練習レース、登録 |
 | `/race` | ランク戦／練習の選択、カウントダウン、観戦（追従／俯瞰、×1/×2/×4、走スキップ）、結果 |
 | `/leaderboard` | 最高連勝・現在の連勝・今週の最高連勝、ページ切替 |
-| `/account` | メールリンクでサインイン、公開名、戦績、登録中の葉っぱ、データ削除 |
+| `/account` | ゲストで開始／メールでサインイン、ゲストへのメール紐づけ、公開名、戦績、登録中の葉っぱ、データ削除 |
 | `/about` | ルール、プライバシーポリシー、通報・問い合わせ、素材と権利 |
 
 画質は「自動／高品質／標準／省電力」。自動のときは、fps が 3 秒続けて 26 を下回ると 1 段ずつ画質を下げます。
@@ -81,19 +84,20 @@ tests/unit/             幾何・乱数・物理・戦績ルール・エディ�
 
 ## ランク戦（Supabase）を有効にする
 
-1. Supabase（Free）でプロジェクトを作成
-2. マイグレーションを適用：`supabase link --project-ref <ref>` → `supabase db push`
-3. Edge Functions をデプロイ：`npm run sync:sim` → `supabase functions deploy leaf-register race-challenge race-resolve account-delete`
-   - 任意：`supabase secrets set ALLOWED_ORIGIN=https://<your>.pages.dev`（CORS を自サイトに限定）
-4. Auth → URL Configuration の Site URL / Redirect URLs に配信先を登録（メールのサインインリンク用）
-5. `.env`（または Cloudflare Pages の環境変数）に **公開値だけ** を設定
+手順は [docs/SETUP.md](docs/SETUP.md) にまとめています。要点：
+
+1. Supabase（Free）でプロジェクトを作成し、匿名サインイン（Allow anonymous sign-ins）を ON、URL Configuration に公開 URL を登録
+2. GitHub の Actions Secrets に `SUPABASE_ACCESS_TOKEN` / `SUPABASE_PROJECT_REF` / `SUPABASE_DB_PASSWORD` を登録し、**Supabase deploy** ワークフローを実行（マイグレーションと Edge Functions を反映）
+3. 公開値（Project URL と anon / publishable キー）を `.env.production` に書いてコミット
 
 ```
 VITE_SUPABASE_URL=https://<ref>.supabase.co
-VITE_SUPABASE_ANON_KEY=<anon public key>
+VITE_SUPABASE_ANON_KEY=<anon public key または publishable key>
 ```
 
-> **service_role キーはブラウザ・`.env`・GitHub の公開設定に絶対に入れないこと。** Edge Functions のシークレット（Supabase が自動で注入）にだけ存在します。
+> **service_role / secret キーはブラウザ・`.env`・リポジトリに絶対に入れないこと。** Edge Functions の実行環境（Supabase が自動で注入）にだけ存在します。
+
+ローカルで CLI を使う場合：`supabase link --project-ref <ref>` → `supabase db push` → `npm run sync:sim` → `supabase functions deploy`。
 
 ### API（論理契約 → 実装）
 
@@ -118,6 +122,8 @@ VITE_SUPABASE_ANON_KEY=<anon public key>
 - 利用量確認（SQL エディタ、service_role）：`select * from usage_report();`
 - サーバー判定の実行時間：1 レース（2 走）の計算は Deno で中央値 約 25ms・最大 約 70ms（開発環境で 30 レース実測）。Edge Functions の CPU 上限内に収まる想定ですが、公開前に本番で実測してください。収まらない場合はランキングを公開せず練習版で止めます
 - Cloudflare Workers（1 リクエスト CPU 10ms）にはサーバー判定を載せません
+- Firebase は Cloud Functions に従量課金（Blaze）プランが必要なため採用していません
+- ゲストは何個でも作れるため、挑戦は 1 分 6 回まで・Supabase 側の匿名サインインの IP 単位レート制限で抑えています
 
 無料枠や利用条件は改定され得るため、デプロイ直前に各社の最新の公式資料を確認してください。
 
@@ -146,9 +152,11 @@ npm run check:sim  # Edge Functions 用 sim-core のコピーが最新か
 
 異常入力テストは、固定ケース＋ランダム生成 200 件＋ランダム切断 300 回です。
 
-## 配信（Cloudflare Pages Free）
+## 配信（GitHub Pages）
 
-`main` への push で GitHub Actions が lint・型検査・テスト・DB テスト・ビルドを行い、`CLOUDFLARE_API_TOKEN` と `CLOUDFLARE_ACCOUNT_ID` のシークレットがあれば `dist/` を Cloudflare Pages に配信します。公開値はリポジトリ変数 `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` で渡します。SPA 用の `_redirects` とセキュリティヘッダー `_headers` を同梱しています。
+`main` への push で GitHub Actions（CI）が lint・型検査・テスト・DB テスト・ビルドを行い、通れば `https://<owner>.github.io/<repo>/` に公開します（`BASE_PATH` でサブパス配信、`404.html` で SPA のフォールバック）。初回はリポジトリの Settings → Pages → Source を **GitHub Actions** にしてください。
+
+`supabase/` か `packages/sim-core/` が変わると **Supabase deploy** ワークフローが DB と Edge Functions を反映します（Secrets 未設定ならスキップ）。
 
 ## 素材と権利
 

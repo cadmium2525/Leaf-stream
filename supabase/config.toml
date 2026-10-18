@@ -8,25 +8,28 @@ max_rows = 100
 
 [db]
 port = 54322
-major_version = 15
+major_version = 17
 
 [auth]
-site_url = "http://localhost:5173"
-additional_redirect_urls = ["http://localhost:5173"]
+site_url = "https://cadmium2525.github.io/Leaf-stream/"
+additional_redirect_urls = ["http://localhost:5173", "https://cadmium2525.github.io/Leaf-stream/account"]
 enable_signup = true
+# 登録なし（ゲスト）で遊べるように匿名サインインを許可
+enable_anonymous_sign_ins = true
 
 [auth.email]
 enable_signup = true
 enable_confirmations = false
 
+# 認証は各関数の中で requireUser() が行う（新しい API キー方式でも動くようにゲートウェイ検証は使わない）
 [functions.leaf-register]
-verify_jwt = true
+verify_jwt = false
 
 [functions.race-challenge]
-verify_jwt = true
+verify_jwt = false
 
 [functions.race-resolve]
-verify_jwt = true
+verify_jwt = false
 
 [functions.account-delete]
-verify_jwt = true
+verify_jwt = false

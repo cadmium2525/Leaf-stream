@@ -5,6 +5,7 @@
  */
 import { createClient, type Session, type SupabaseClient } from '@supabase/supabase-js';
 import type { Polygon } from '../../packages/sim-core/src/index.ts';
+import { withBase } from '../app/base.ts';
 
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
@@ -31,6 +32,10 @@ const ERROR_TEXT: Record<string, string> = {
   sim_version_mismatch: 'ゲームが更新されました。ページを再読み込みしてください',
   simulation_failed: '結果の確定に失敗しました。戦績には反映されていません',
   network: '通信に失敗しました',
+  anonymous_disabled: 'ゲストでの参加が無効になっています（運営者：Supabase で匿名サインインを有効にしてください）',
+  guest_failed: 'ゲストとして始められませんでした。少し時間をおいて試してください',
+  email_taken: 'そのメールアドレスはすでに別のアカウントで使われています',
+  link_failed: 'メールアドレスを登録できませんでした',
   internal: 'サーバーで問題が起きました。戦績には反映されていません',
 };
 
@@ -45,16 +50,15 @@ function need(): SupabaseClient {
 }
 
 async function call<T>(fn: string, body: unknown): Promise<T> {
-  const sb = need();
-  const { data: s } = await sb.auth.getSession();
-  if (!s.session) throw new ApiError('unauthorized', 401);
+  // 未サインインなら自動でゲストになる（登録なしで遊べる）
+  const session = await ensureSession();
   let res: Response;
   try {
     res = await fetch(`${url}/functions/v1/${fn}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${s.session.access_token}`,
+        Authorization: `Bearer ${session.access_token}`,
         apikey: anonKey!,
       },
       body: JSON.stringify(body),
@@ -79,8 +83,29 @@ export function onAuthChange(fn: (s: Session | null) => void): void {
   supabase?.auth.onAuthStateChange((_e, s) => fn(s));
 }
 
+/** セッションが無ければ匿名（ゲスト）でサインインする */
+export async function ensureSession(): Promise<Session> {
+  const s = await getSession();
+  if (s) return s;
+  const { data, error } = await need().auth.signInAnonymously();
+  if (error || !data.session) {
+    throw new ApiError(error?.message.toLowerCase().includes('anonymous') ? 'anonymous_disabled' : 'guest_failed');
+  }
+  return data.session;
+}
+
+export function isGuest(s: Session | null): boolean {
+  return !!s?.user.is_anonymous;
+}
+
+/** ゲストにメールアドレスを紐づける（確認メールのリンクを押すと他の端末でも続きから遊べる） */
+export async function linkEmail(email: string): Promise<void> {
+  const { error } = await need().auth.updateUser({ email }, { emailRedirectTo: `${location.origin}${withBase('/account')}` });
+  if (error) throw new ApiError(error.message.includes('already') ? 'email_taken' : 'link_failed');
+}
+
 export async function signInWithEmail(email: string): Promise<void> {
-  const { error } = await need().auth.signInWithOtp({ email, options: { emailRedirectTo: `${location.origin}/account` } });
+  const { error } = await need().auth.signInWithOtp({ email, options: { emailRedirectTo: `${location.origin}${withBase('/account')}` } });
   if (error) throw new ApiError(error.message);
 }
 
