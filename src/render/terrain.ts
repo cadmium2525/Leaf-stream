@@ -163,9 +163,10 @@ export class Terrain {
         const [ox, oy, v] = prof[k];
         let jx = 0;
         let jy = 0;
-        if (opts.jitter && k > 0) {
+        // 水面より上で水際から離れた点だけ凸凹させる（水路の中に土手がはみ出さないように）
+        if (opts.jitter && oy > 0.03 && ox > 0.05) {
           const yi = Math.round(y);
-          jx = hash2(yi * 3 + side, k + (opts.seed ?? 0)) * opts.jitter;
+          jx = Math.abs(hash2(yi * 3 + side, k + (opts.seed ?? 0))) * opts.jitter;
           jy = hash2(yi * 5 - side, k * 7 + (opts.seed ?? 0)) * opts.jitter * 0.6;
         }
         pos.push(c + side * (w + ox + jx), oy + jy + base, z);

@@ -62,6 +62,11 @@ function profileHeight(prof: [number, number, number][], off: number): number {
   return prof[prof.length - 1][1];
 }
 
+/** 岩の形のゆらぎと回転を見込んだ、中心から外形までの最大距離（半径に対する倍率） */
+const ROCK_REACH = 1.45;
+/** 中心から上端までの高さ（半径に対する倍率。縦は 0.75 倍に潰している） */
+const ROCK_TOP = 1.0;
+
 /** 草地の土手（コンクリート水路の外側） */
 const GRASS_BANK: [number, number, number][] = [
   [WALL_T - 0.005, WALL_TOP - 0.005, 0], [0.6, WALL_TOP + 0.02, 0.6], [1.6, 0.1, 1.6], [3.2, -0.2, 3.2], [4.5, -0.34, 4.5],
@@ -373,7 +378,8 @@ export class CanalScene {
     for (const side of [-1, 1]) {
       for (let y = T.y0; y < T.y1;) {
         const rad = 0.03 + r() * 0.07;
-        rocks.push({ x: T.cx(y) + side * (T.hw(y) + rad * 0.45), y: T.bed(y) - 0.015, z: -y * S, r: rad });
+        // 岩の内側の端が水際（葉が跳ね返る位置）に来るように、水路の外側へ置く
+        rocks.push({ x: T.cx(y) + side * (T.hw(y) + rad * ROCK_REACH), y: T.bed(y) - 0.015, z: -y * S, r: rad });
         y += 10 + r() * 18;
       }
     }
@@ -428,8 +434,9 @@ export class CanalScene {
       const colors: number[] = [];
       for (let i = 0; i < pos.count; i++) {
         const v = new THREE.Vector3().fromBufferAttribute(pos, i);
-        const n = 1 + 0.18 * Math.sin(v.x * 3.1 + phase[0]) * Math.sin(v.y * 2.7 + phase[1]) + 0.1 * Math.sin(v.z * 5.3 + phase[2]);
-        v.multiplyScalar(n);
+        // 横方向の凸凹は小さめにして、当たり判定の円（半径 r）と見た目の輪郭を揃える
+        const n = 1 + 0.08 * Math.sin(v.x * 3.1 + phase[0]) * Math.sin(v.y * 2.7 + phase[1]) + 0.05 * Math.sin(v.z * 5.3 + phase[2]);
+        v.set(v.x * n, v.y * (1 + 0.18 * Math.sin(v.x * 4.3 + phase[1])), v.z * n);
         pos.setXYZ(i, v.x, v.y, v.z);
         // 上面は苔、水に濡れた部分は暗く
         const mossy = Math.max(0, v.y) * (0.6 + 0.4 * Math.sin(v.x * 7 + phase[0]));
@@ -441,7 +448,7 @@ export class CanalScene {
       const m = new THREE.Mesh(geo, stoneMat);
       const rr = s.r * S;
       const hgt = natural ? 0.09 : 0.07;
-      m.scale.set(rr, hgt, rr * 0.92);
+      m.scale.set(rr, hgt, rr);
       m.position.set(s.x * S, T.bed(s.y) - DEPTH + hgt * 0.8, -s.y * S);
       m.rotation.y = r() * Math.PI;
       m.castShadow = q.shadows;
@@ -461,13 +468,15 @@ export class CanalScene {
         for (let x = c - w - 0.02; x <= c + w + 0.02; x += 0.045 + r() * 0.03) {
           if (d.notchW > 0 && Math.abs(x - d.notchX * S) < d.notchW * S * 0.55) continue;
           const rad = 0.03 + r() * 0.025;
-          rocks.push({ x, y: T.bed(d.y - 1) - rad * 0.55 + r() * 0.01, z: -(d.y - 0.5) * S, r: rad });
+          // 落ち口の岩棚は水面のすぐ下に沈める（水がその上を越えていく。葉もその上を流れる）
+          rocks.push({ x, y: T.water(d.y - 1) - 0.02 - rad * ROCK_TOP, z: -(d.y - 0.5) * S, r: rad });
         }
         // 滝壺の縁の石
         for (let k = 0; k < 5; k++) {
           const rad = 0.02 + r() * 0.025;
           const side = k % 2 === 0 ? -1 : 1;
-          rocks.push({ x: c + side * (w - rad * 0.3), y: T.bed(d.y + 20) - DEPTH * 0.6, z: -(d.y + 8 + r() * 25) * S, r: rad });
+          const y = d.y + 8 + r() * 25;
+          rocks.push({ x: T.cx(y) + side * (T.hw(y) + rad * ROCK_REACH), y: T.bed(y) - DEPTH * 0.4, z: -y * S, r: rad });
         }
       }
       this.addRocks(g, rocks, course.seed + 7);
