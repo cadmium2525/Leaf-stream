@@ -189,4 +189,21 @@ update profiles set status = 'active' where user_id = '00000000-0000-0000-0000-0
 delete from auth.users where id = '00000000-0000-0000-0000-00000000000c';
 select pg_temp.assert((select count(*) from profiles where user_id = '00000000-0000-0000-0000-00000000000c') = 0, '削除でプロフィール消去');
 
+
+
+-- 利用量レポートと容量ガード
+set role service_role;
+select pg_temp.assert((select races_this_month from usage_report()) >= 1, '利用量レポート');
+select pg_temp.assert(enforce_usage_guard(1) = false, '容量上限でランク戦停止');
+reset role;
+select pg_temp.assert((select ranked_enabled from service_flags) = false, '停止フラグが立つ');
+update service_flags set ranked_enabled = true;
+set role authenticated;
+do $$ begin
+  perform usage_report();
+  raise exception 'should fail';
+exception when insufficient_privilege then null;
+end $$;
+reset role;
+select 'usage guard: passed' as result;
 select 'db_test: all passed' as result;

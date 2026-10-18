@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#1f3a2b" />
+    <meta name="description" content="田舎の用水路に、自分で切った葉っぱを流して競う。非同期の葉っぱクラフトレース。" />
+    <title>葉っぱ流し｜LEAF STREAM</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  </head>
+  <body>
+    <div id="stage"></div>
+    <header id="topbar">
+      <a href="/" data-link class="brand" aria-label="葉っぱ流し トップへ"><img src="/favicon.svg" alt="" class="brand-icon" width="26" height="26" /><span class="brand-ja">葉っぱ流し</span><span class="brand-en">LEAF STREAM</span></a>
+      <nav>
+        <a href="/race" data-link>あそぶ</a>
+        <a href="/editor" data-link>葉っぱ</a>
+        <a href="/leaderboard" data-link>ランキング</a>
+        <a href="/account" data-link id="nav-account">アカウント</a>
+        <button id="settings-btn" class="icon-btn" aria-label="設定" title="設定">⚙</button>
+      </nav>
+    </header>
+    <main id="view"></main>
+    <div id="settings" class="panel hidden" role="dialog" aria-label="設定"></div>
+    <div id="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

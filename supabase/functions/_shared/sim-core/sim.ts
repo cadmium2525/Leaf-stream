@@ -426,6 +426,12 @@ export class RunSim {
     }) as [LeafRunResult, LeafRunResult];
   }
 
+  /** 現在の姿勢（描画・プレビュー用）。lane 0=左, 1=右 */
+  pose(lane: 0 | 1): { x: number; y: number; c: number; s: number; contact: number } {
+    const b = this.bodies[lane];
+    return { x: b.x, y: b.y, c: b.c, s: b.s, contact: b.contact };
+  }
+
   getTrace(): RunTrace {
     return { frames: Float32Array.from(this.trace), frameCount: this.trace.length / 10, every: SIM.traceEvery };
   }

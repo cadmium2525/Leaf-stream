@@ -13,6 +13,11 @@ Deno.serve(handler(async (req) => {
   const key = body.idempotencyKey;
   if (typeof key !== 'string' || !/^[A-Za-z0-9-]{8,64}$/.test(key)) throw new HttpError(400, 'bad_idempotency_key');
 
+  // 無料枠ガード：DB 容量が閾値を超えていたら新規ランク戦を止める
+  const { data: open, error: guardErr } = await admin.rpc('enforce_usage_guard');
+  if (guardErr) throw dbError(guardErr.message);
+  if (open === false) throw new HttpError(503, 'ranked_paused');
+
   const courseId = COURSE_IDS[randomU32() % COURSE_IDS.length];
   const { data, error } = await admin.rpc('create_challenge', {
     p_user: user.id,
