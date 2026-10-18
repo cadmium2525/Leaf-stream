@@ -1,0 +1,8 @@
+{
+  "name": "@leaf-stream/sim-core",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "description": "LEAF STREAM 決定論的レースエンジン（UI・DOM 非依存）"
+}
