@@ -3,13 +3,14 @@ import {
   type LeafRunResult, type Polygon, type RaceOutcome, type RaceResult,
 } from '../../../packages/sim-core/src/index.ts';
 import {
-  ApiError, challenge, errorText, getMyProfile, getRaceDefender, getSession, isGuest, online, rankedEnabled, registerLeaf,
-  reportUser, resolveRace, type ResolvedRace,
+  ApiError, challenge, errorText, getMyProfile, getRaceDefender, online, rankedEnabled, registerLeaf,
+  reportUser, resolveRace, updateDisplayName, type ResolvedRace,
 } from '../../api/client.ts';
 import { ambience, getScene } from '../context.ts';
 import { h, toast } from '../dom.ts';
 import { ReplayPlayer, type PlayerTick } from '../replay-player.ts';
 import { loadDraft, settings } from '../state.ts';
+import { nameInput, nameProblem } from '../name-field.ts';
 import type { Page, Router } from '../router.ts';
 
 interface RaceSetup {
@@ -106,29 +107,34 @@ export function racePage(router: Router): Page {
     const status = h('p', { class: 'muted' }, '確認中…');
     rankedCard.append(status);
     try {
-      const [{ leaf, stats }, enabled, session] = await Promise.all([getMyProfile(), rankedEnabled(), getSession()]);
+      const [{ profile, leaf, stats }, enabled] = await Promise.all([getMyProfile(), rankedEnabled()]);
       if (!enabled) {
         status.textContent = 'ただいまランク戦の受付を停止しています。練習は遊べます。';
         return;
       }
+      // ランキングに載る名前。初めての人もここで決めてそのまま挑戦できる
+      const name = nameInput(profile?.display_name ?? '', 'ranked-name');
+      const nameRow = h('div', {},
+        h('label', { for: 'ranked-name', style: 'color:inherit' }, 'ランキングに表示する名前'),
+        name);
       const challengeBtn = (label: string, registerDraft: boolean, primary = true) => h('button', {
         class: `btn${primary ? ' primary' : ''}`,
         disabled: registerDraft && !draftOk,
-        onclick: (e: Event) => void startRanked(e.currentTarget as HTMLButtonElement, registerDraft),
+        onclick: (e: Event) => void startRanked(e.currentTarget as HTMLButtonElement, registerDraft, name.value.trim(), profile?.display_name ?? null),
       }, label);
       if (!leaf) {
-        status.replaceWith(...([
-          h('p', {}, 'ユーザー登録なしで参加できます。いま編集中の葉っぱを登録して挑戦します。'),
+        status.replaceWith(
+          h('p', {}, '登録不要で参加できます。名前を決めて、いま編集中の葉っぱで挑戦しましょう。'),
+          nameRow,
           h('div', { class: 'btn-row' }, challengeBtn('この葉っぱで挑戦', true), h('a', { href: '/editor', 'data-link': true, class: 'btn' }, '先に形を変える')),
-          !session || isGuest(session)
-            ? h('p', { class: 'muted' }, 'ゲストとして記録されます。アカウント画面でメールを登録すると、他の端末でも続きから遊べます。')
-            : null,
-        ] as (HTMLElement | null)[]).filter((x): x is HTMLElement => x !== null));
+          h('p', { class: 'muted' }, '記録はこのブラウザに保存されます。'),
+        );
         return;
       }
       const draftDiffers = shapeHash(draft) !== leaf.shape_hash;
       status.replaceWith(
         h('p', {}, `現在 ${stats?.current_streak ?? 0} 連勝（最高 ${stats?.best_streak ?? 0}）・登録中の葉 v${leaf.version}`),
+        nameRow,
         h('div', { class: 'btn-row' },
           challengeBtn('ランダムな相手に挑戦', false),
           draftDiffers && draftOk ? challengeBtn('編集中の形に更新して挑戦', true, false) : ''),
@@ -154,11 +160,20 @@ export function racePage(router: Router): Page {
     await play({ ranked: false, courseId: cid, seed: (Math.random() * 4294967296) >>> 0, me, opp: bot.polygon, oppName: `${bot.name}（練習）` }, null);
   }
 
-  async function startRanked(btn: HTMLButtonElement, registerDraft: boolean): Promise<void> {
+  async function startRanked(btn: HTMLButtonElement, registerDraft: boolean, name: string, currentName: string | null): Promise<void> {
+    // 名前が空ならそのまま（自動の名前）。入力があれば確認してから保存
+    if (name && name !== currentName) {
+      const problem = nameProblem(name);
+      if (problem) {
+        toast(problem);
+        return;
+      }
+    }
     const label = btn.textContent ?? '';
     btn.disabled = true;
     btn.textContent = registerDraft ? '葉っぱを登録しています…' : '相手を探しています…';
     try {
+      if (name && name !== currentName) await updateDisplayName(name);
       if (registerDraft) {
         await registerLeaf(loadDraft().polygon);
         btn.textContent = '相手を探しています…';

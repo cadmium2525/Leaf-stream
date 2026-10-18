@@ -5,7 +5,6 @@
  */
 import { createClient, type Session, type SupabaseClient } from '@supabase/supabase-js';
 import type { Polygon } from '../../packages/sim-core/src/index.ts';
-import { withBase } from '../app/base.ts';
 
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
@@ -34,8 +33,6 @@ const ERROR_TEXT: Record<string, string> = {
   network: '通信に失敗しました',
   anonymous_disabled: 'ゲストでの参加が無効になっています（運営者：Supabase で匿名サインインを有効にしてください）',
   guest_failed: 'ゲストとして始められませんでした。少し時間をおいて試してください',
-  email_taken: 'そのメールアドレスはすでに別のアカウントで使われています',
-  link_failed: 'メールアドレスを登録できませんでした',
   internal: 'サーバーで問題が起きました。戦績には反映されていません',
 };
 
@@ -79,9 +76,6 @@ export async function getSession(): Promise<Session | null> {
   return data.session;
 }
 
-export function onAuthChange(fn: (s: Session | null) => void): void {
-  supabase?.auth.onAuthStateChange((_e, s) => fn(s));
-}
 
 /** セッションが無ければ匿名（ゲスト）でサインインする */
 export async function ensureSession(): Promise<Session> {
@@ -94,24 +88,7 @@ export async function ensureSession(): Promise<Session> {
   return data.session;
 }
 
-export function isGuest(s: Session | null): boolean {
-  return !!s?.user.is_anonymous;
-}
 
-/** ゲストにメールアドレスを紐づける（確認メールのリンクを押すと他の端末でも続きから遊べる） */
-export async function linkEmail(email: string): Promise<void> {
-  const { error } = await need().auth.updateUser({ email }, { emailRedirectTo: `${location.origin}${withBase('/account')}` });
-  if (error) throw new ApiError(error.message.includes('already') ? 'email_taken' : 'link_failed');
-}
-
-export async function signInWithEmail(email: string): Promise<void> {
-  const { error } = await need().auth.signInWithOtp({ email, options: { emailRedirectTo: `${location.origin}${withBase('/account')}` } });
-  if (error) throw new ApiError(error.message);
-}
-
-export async function signOut(): Promise<void> {
-  await supabase?.auth.signOut();
-}
 
 // ---------- プロフィール・戦績 ----------
 
@@ -148,15 +125,15 @@ export async function getMyProfile(): Promise<{ profile: Profile | null; stats: 
   };
 }
 
+/** ランキングに表示する名前を変える（未参加ならこの時点でゲストとして始まる） */
 export async function updateDisplayName(name: string): Promise<void> {
   const sb = need();
-  const s = await getSession();
-  if (!s) throw new ApiError('unauthorized');
+  const s = await ensureSession();
   const { error } = await sb.from('profiles').update({ display_name: name }).eq('user_id', s.user.id);
   if (error) throw new ApiError(error.message.includes('ng_display_name') ? 'ng_display_name' : 'invalid_display_name');
 }
 ERROR_TEXT.ng_display_name = 'その名前は使えません';
-ERROR_TEXT.invalid_display_name = '名前は 1〜16 文字で入力してください';
+ERROR_TEXT.invalid_display_name = '名前は 1〜16 文字で、記号の < > は使えません';
 
 // ---------- 葉っぱ ----------
 
@@ -214,7 +191,8 @@ export async function getRaceDefender(raceId: string): Promise<string | null> {
 
 export async function deleteAccount(): Promise<void> {
   await call('account-delete', { confirm: 'DELETE' });
-  await signOut();
+  // 端末に残ったセッションを消す
+  await supabase?.auth.signOut();
 }
 
 // ---------- ランキング ----------

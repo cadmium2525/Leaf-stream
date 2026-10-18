@@ -12,13 +12,14 @@ major_version = 17
 
 [auth]
 site_url = "https://cadmium2525.github.io/Leaf-stream/"
-additional_redirect_urls = ["http://localhost:5173", "https://cadmium2525.github.io/Leaf-stream/account"]
+additional_redirect_urls = ["http://localhost:5173"]
 enable_signup = true
 # 登録なし（ゲスト）で遊べるように匿名サインインを許可
 enable_anonymous_sign_ins = true
 
+# メールでの登録・ログインは使わない（匿名プレイヤーのみ）
 [auth.email]
-enable_signup = true
+enable_signup = false
 enable_confirmations = false
 
 # 認証は各関数の中で requireUser() が行う（新しい API キー方式でも動くようにゲートウェイ検証は使わない）

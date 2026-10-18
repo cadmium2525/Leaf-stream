@@ -36,21 +36,16 @@ Supabase を初めて触る人向けの手順です。**パソコンに何もイ
 
 ---
 
-## ステップ 3：ログインの設定（2 か所）
+## ステップ 3：登録なしで遊べるようにする（1 か所だけ）
 
-### 3-1. ゲストで遊べるようにする
+このゲームはメール登録を使いません。ブラウザごとに自動で「ゲストのプレイヤー」が作られる仕組み（匿名サインイン）だけを使います。
 
 1. 左メニューの **Authentication**（人の形のアイコン）
 2. **Sign In / Providers**（または Settings）を開く
 3. **Allow anonymous sign-ins** を **ON** にして **Save**
+4. 同じ画面の **Allow new users to sign up** は **ON のまま**にしてください（OFF だと新しいプレイヤーが作れません）
 
-### 3-2. メールのリンクの戻り先
-
-1. 同じ Authentication の中の **URL Configuration**
-2. **Site URL** に `https://cadmium2525.github.io/Leaf-stream/` を入れて **Save**
-3. **Redirect URLs** の **Add URL** で次の 2 つを追加
-   - `https://cadmium2525.github.io/Leaf-stream/account`
-   - `http://localhost:5173/account`
+> 任意：メールのログインは使わないので、同じ画面の **Email** プロバイダーを OFF にしても構いません。
 
 ---
 
@@ -106,8 +101,7 @@ Supabase を初めて触る人向けの手順です。**パソコンに何もイ
 | --- | --- |
 | Supabase deploy の「プロジェクトに接続」で失敗 | `SUPABASE_PROJECT_REF` / `SUPABASE_ACCESS_TOKEN` の貼り間違い（前後の空白に注意） |
 | 「DB マイグレーション」で password authentication failed | `SUPABASE_DB_PASSWORD` が違う。Project Settings → Database → **Reset database password** で作り直して Secret を更新 |
-| ゲームで「ゲストでの参加が無効になっています」 | ステップ 3-1 が OFF のまま |
-| メールが届かない | Supabase 標準のメール送信は 1 時間に数通までの制限があります。少し待つか、迷惑メールフォルダを確認 |
+| ゲームで「ゲストでの参加が無効になっています」 | ステップ 3 の Allow anonymous sign-ins が OFF のまま |
 | ランク戦で「受付を停止しています」 | Table Editor → `service_flags` の `ranked_enabled` が false。true にすると再開 |
 
 ## 運用メモ

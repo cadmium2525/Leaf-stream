@@ -1,12 +1,10 @@
-import {
-  deleteAccount, ensureSession, errorText, getMyProfile, getSession, isGuest, linkEmail, online, signInWithEmail, signOut,
-  updateDisplayName,
-} from '../../api/client.ts';
+import { deleteAccount, errorText, getMyProfile, online, updateDisplayName } from '../../api/client.ts';
 import { drawLeafThumb } from '../context.ts';
 import { h, toast } from '../dom.ts';
+import { nameInput, nameProblem } from '../name-field.ts';
 import type { Page, Router } from '../router.ts';
 
-/** /account：サインイン、公開名、葉っぱ確認、戦績、データ削除 */
+/** /account：ランキングの名前、戦績、登録中の葉っぱ、データ削除（ユーザー登録・メールは使わない） */
 export function accountPage(router: Router): Page {
   return {
     paper: true,
@@ -15,67 +13,53 @@ export function accountPage(router: Router): Page {
       root.append(wrap);
       if (!online) {
         wrap.append(h('section', { class: 'panel' },
-          h('h1', {}, 'アカウント'),
+          h('h1', {}, 'プレイヤー'),
           h('p', {}, 'このサイトはサーバー未設定のため、オフライン（練習のみ）で動いています。'),
-          h('p', { class: 'muted' }, '運営者向け：.env に VITE_SUPABASE_URL と VITE_SUPABASE_ANON_KEY を設定するとランク戦が有効になります。')));
-        return;
-      }
-      const session = await getSession();
-      if (!session) {
-        const sent = h('p', { class: 'muted' }, '');
-        wrap.append(
-          h('section', { class: 'panel' },
-            h('h1', {}, 'はじめる'),
-            h('p', {}, 'ユーザー登録なしで、すぐにランク戦に参加できます。記録はこの端末（ブラウザ）に紐づきます。'),
-            h('div', { class: 'btn-row' }, h('button', {
-              class: 'btn primary', onclick: async () => {
-                try {
-                  await ensureSession();
-                  toast('ゲストとして始めました');
-                  router.go('/account', true);
-                } catch (e) {
-                  toast(errorText(e), 5000);
-                }
-              },
-            }, 'ゲストで始める')),
-            h('p', { class: 'muted' }, h('a', { href: '/about#privacy', 'data-link': true }, 'プライバシーポリシー'), 'に同意のうえご利用ください。'),
-          ),
-          h('section', { class: 'panel' },
-            h('h2', {}, 'メールで続きから'),
-            h('p', { class: 'muted' }, '以前メールアドレスを登録した人は、ここからサインインすると別の端末でも続きから遊べます。'),
-            emailForm('サインイン用リンクを送る', async (v) => {
-              await signInWithEmail(v);
-              sent.textContent = `${v} にサインイン用のリンクを送りました。メールを開いてリンクを押してください。`;
-            }, sent),
-          ),
-        );
+          h('p', { class: 'muted' }, '運営者向け：.env.production に VITE_SUPABASE_URL と VITE_SUPABASE_ANON_KEY を設定するとランク戦が有効になります。')));
         return;
       }
 
       const { profile, stats, leaf } = await getMyProfile();
-      const name = h('input', { type: 'text', id: 'name', maxlength: 16, value: profile?.display_name ?? '' });
+      const name = nameInput(profile?.display_name ?? '');
+      const saveBtn = h('button', {
+        class: 'btn primary', onclick: async () => {
+          const problem = nameProblem(name.value);
+          if (problem) {
+            toast(problem);
+            return;
+          }
+          saveBtn.disabled = true;
+          try {
+            await updateDisplayName(name.value.trim());
+            toast('名前を保存しました');
+            if (!profile) router.go('/account', true);
+          } catch (e) {
+            toast(errorText(e));
+          } finally {
+            saveBtn.disabled = false;
+          }
+        },
+      }, '名前を保存');
       const thumb = h('canvas', { class: 'leaf-thumb' });
+
       wrap.append(
         h('section', { class: 'panel' },
-          h('h1', {}, 'アカウント'),
-          h('label', { for: 'name' }, '公開する名前（1〜16 文字）'),
+          h('h1', {}, 'プレイヤー'),
+          h('label', { for: 'display-name' }, 'ランキングに表示する名前（自由に付けられます・1〜16 文字）'),
           name,
-          h('div', { class: 'btn-row', style: 'margin-top:10px' },
-            h('button', {
-              class: 'btn primary', onclick: async () => {
-                try {
-                  await updateDisplayName((name as HTMLInputElement).value.trim());
-                  toast('名前を変更しました');
-                } catch (e) {
-                  toast(errorText(e));
-                }
-              },
-            }, '名前を保存'),
-            isGuest(session)
-              ? ''
-              : h('button', { class: 'btn', onclick: async () => { await signOut(); router.go('/', true); } }, 'サインアウト')),
+          h('div', { class: 'btn-row', style: 'margin-top:10px' }, saveBtn),
+          h('p', { class: 'muted', style: 'margin-top:10px' },
+            'ユーザー登録はありません。記録はこのブラウザに保存されるので、ブラウザのデータを消したり別の端末で開いたりすると、新しいプレイヤーとして始まります。'),
         ),
-        isGuest(session) ? guestPanel() : '',
+      );
+      if (!profile) {
+        wrap.append(h('section', { class: 'panel' },
+          h('p', {}, 'まだランク戦に参加していません。名前を保存するか、「あそぶ」から挑戦すると始まります。'),
+          h('a', { href: '/race', 'data-link': true, class: 'btn' }, 'あそぶ')));
+        return;
+      }
+
+      wrap.append(
         h('section', { class: 'panel' },
           h('h2', {}, '戦績'),
           h('div', { class: 'stat-grid' },
@@ -97,7 +81,7 @@ export function accountPage(router: Router): Page {
         ),
         h('section', { class: 'panel' },
           h('h2', {}, 'データの削除'),
-          h('p', { class: 'muted' }, 'アカウントと、登録した葉っぱ・戦績・レース記録をすべて削除します。元に戻せません。'),
+          h('p', { class: 'muted' }, '名前・登録した葉っぱ・戦績・レース記録をすべて削除し、ランキングからも消えます。元に戻せません。'),
           h('button', {
             class: 'btn warn', onclick: async () => {
               const v = prompt('削除するには「削除」と入力してください');
@@ -114,34 +98,6 @@ export function accountPage(router: Router): Page {
         ),
       );
       if (leaf) requestAnimationFrame(() => drawLeafThumb(thumb, leaf.polygon));
-
-      function guestPanel(): HTMLElement {
-        const msg = h('p', { class: 'muted' }, '');
-        return h('section', { class: 'panel' },
-          h('h2', {}, 'ゲストで遊んでいます'),
-          h('p', {}, 'ブラウザのデータを消したり別の端末に変えたりすると、この記録には戻れません。メールアドレスを登録すると、どの端末からでも続きから遊べます。'),
-          emailForm('メールアドレスを登録', async (v) => {
-            await linkEmail(v);
-            msg.textContent = `${v} に確認メールを送りました。メールのリンクを押すと登録が完了します。`;
-          }, msg),
-        );
-      }
     },
   };
-}
-
-function emailForm(label: string, submit: (email: string) => Promise<void>, msg: HTMLElement): HTMLFormElement {
-  const email = h('input', { type: 'email', placeholder: 'you@example.com', autocomplete: 'email', required: true, 'aria-label': 'メールアドレス' });
-  return h('form', {
-    onsubmit: async (e: Event) => {
-      e.preventDefault();
-      const v = email.value.trim();
-      if (!v) return;
-      try {
-        await submit(v);
-      } catch (err) {
-        msg.textContent = errorText(err);
-      }
-    },
-  }, email, h('div', { class: 'btn-row', style: 'margin-top:12px' }, h('button', { class: 'btn primary', type: 'submit' }, label)), msg);
 }

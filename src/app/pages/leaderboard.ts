@@ -21,6 +21,7 @@ export function leaderboardPage(): Page {
         h('section', { class: 'panel' },
           h('h1', {}, 'ランキング'),
           h('p', { class: 'muted' }, '連勝は自分から挑戦したレースだけで増えます。防衛（挑戦された側）の勝敗は連勝に影響しません。'),
+          h('p', { class: 'muted' }, h('a', { href: '/account', 'data-link': true }, '自分の名前を変える')),
           tabs, body, pager,
         )));
       if (!online) {
