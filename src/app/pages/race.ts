@@ -1,5 +1,5 @@
 import {
-  BOT_LEAVES, COURSE_IDS, COURSE_PRESETS, SIM, generateCourse, shapeHash, simulateRace, ticksToSeconds, validateLeaf,
+  BOT_LEAVES, COURSE_IDS, COURSE_PRESETS, SIM, generateCourse, shapeHash, simulateRace, windAt, type Course, ticksToSeconds, validateLeaf,
   type LeafRunResult, type Polygon, type RaceOutcome, type RaceResult,
 } from '../../../packages/sim-core/src/index.ts';
 import {
@@ -239,6 +239,8 @@ export function racePage(router: Router): Page {
 
     const clock = h('div', { class: 'race-clock' }, '0.00');
     const runLabel = h('div', { class: 'muted', style: 'text-align:center' }, `1 走目 / ${course.name}`);
+    const windLabel = h('div', { class: 'muted', style: 'text-align:center;font-size:12px' }, '');
+    const windNow: [number, number] = [0, 0];
     const prog = h('div', { class: 'progress-track' },
       h('span', { style: `background:${COLORS[0]};left:0%` }), h('span', { style: `background:${COLORS[1]};left:0%` }));
     const chipA = h('div', { class: 'glass racer-chip' }, h('span', { class: 'dot', style: `background:${COLORS[0]}` }), h('span', {}, 'あなた'), h('b', {}, ''));
@@ -251,7 +253,7 @@ export function racePage(router: Router): Page {
     const resultBtn = h('button', { class: 'btn small' }, '結果へ');
     labels = [h('div', { class: 'label3d' }, 'あなた'), h('div', { class: 'label3d' }, setup.oppName)];
     ui.replaceChildren(
-      h('div', { class: 'race-top' }, chipA, h('div', { class: 'glass' }, clock, runLabel, prog), chipB),
+      h('div', { class: 'race-top' }, chipA, h('div', { class: 'glass' }, clock, runLabel, windLabel, prog), chipB),
       countdown, banner, ...labels,
       h('div', { class: 'race-bottom glass' }, camBtn, speedBtn, skipBtn, resultBtn),
     );
@@ -303,6 +305,7 @@ export function racePage(router: Router): Page {
     };
     player.onTick = (s: PlayerTick) => {
       const res = result.runs[s.run];
+      windLabel.textContent = windText(course, s.t, windNow);
       // 2 枚ともゴールしたら時計は止める（葉はそのまま流れ続ける）
       const allIn = res[0].status === 'finished' && res[1].status === 'finished' && s.finished[0] && s.finished[1];
       clock.textContent = (allIn ? Math.max(res[0].finishTick, res[1].finishTick) / 60 : s.t).toFixed(2);
@@ -421,4 +424,17 @@ export function racePage(router: Router): Page {
 function statusText(r: LeafRunResult): string {
   const pen = `+${SIM.penaltyTicks / 60}秒`;
   return r.status === 'stuck' ? `詰まり（${pen}）` : `時間切れ（${pen}）`;
+}
+
+/** いまの風を「追い風 1.2m/s ↓」のように表す（↓ が下流＝画面奥） */
+function windText(course: Course, t: number, out: [number, number]): string {
+  windAt(course, t, out);
+  const [x, y] = out;
+  const sp = Math.sqrt(x * x + y * y) / 100;
+  if (sp < 0.15) return '風：ほぼ無風';
+  let kind: string;
+  if (Math.abs(y) >= Math.abs(x) * 1.2) kind = y > 0 ? '追い風' : '向かい風';
+  else if (Math.abs(x) >= Math.abs(y) * 1.2) kind = '横風';
+  else kind = y > 0 ? '斜め追い風' : '斜め向かい風';
+  return `風：${kind} ${sp.toFixed(1)}m/s`;
 }

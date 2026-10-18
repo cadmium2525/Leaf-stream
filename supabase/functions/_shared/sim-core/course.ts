@@ -62,7 +62,14 @@ export interface CoursePreset {
   /** 落差に切り欠きができる確率 */
   notchChance: number;
   coverCount: number;
+  /** 岩の門（狭い隙間のある岩の対）の数 */
+  gateCount: number;
   noiseAmp: number;
+  /** 風の平均（cm/s）。windY>0 が追い風、windY<0 が向かい風。windX は横風の強さ（向きはシードで決まる） */
+  windY: number;
+  windX: number;
+  /** 突風の強さ（cm/s） */
+  gust: number;
 }
 
 export const COURSE_PRESETS: CoursePreset[] = [
@@ -83,7 +90,12 @@ export const COURSE_PRESETS: CoursePreset[] = [
     dropHeight: [3, 5],
     notchChance: 0.5,
     coverCount: 0,
+    gateCount: 0,
     noiseAmp: 0.08,
+    // 開けた田んぼを吹き抜ける追い風
+    windY: 110,
+    windX: 0,
+    gust: 70,
   },
   {
     id: 'jutaku',
@@ -102,7 +114,12 @@ export const COURSE_PRESETS: CoursePreset[] = [
     dropHeight: [2.5, 3.5],
     notchChance: 0.2,
     coverCount: 2,
+    gateCount: 0,
     noiseAmp: 0.1,
+    // 家並みのあいだを吹き上がる向かい風
+    windY: -60,
+    windX: 0,
+    gust: 50,
   },
   {
     id: 'yamazato',
@@ -114,14 +131,19 @@ export const COURSE_PRESETS: CoursePreset[] = [
     widthJitter: 9,
     meander: 14,
     baseSpeed: 40,
-    stoneCount: [8, 11],
-    stoneRadius: [3, 7.5],
+    stoneCount: [11, 14],
+    stoneRadius: [3.5, 7.5],
     eddyCount: [2, 4],
     dropCount: [3, 3],
     dropHeight: [5, 8],
     notchChance: 1,
     coverCount: 0,
-    noiseAmp: 0.14,
+    gateCount: 0,
+    noiseAmp: 0.09,
+    // 谷を下る追い風と、谷を横切る風（向きは日による）
+    windY: 55,
+    windX: 65,
+    gust: 45,
   },
 ];
 
@@ -150,6 +172,11 @@ export interface Course {
   noiseAmp: number;
   noiseSeedA: number;
   noiseSeedB: number;
+  /** 風（cm/s）。平均＋時間で揺らぐ突風 */
+  windX: number;
+  windY: number;
+  gust: number;
+  windSeed: number;
 }
 
 export function getPreset(courseId: string): CoursePreset {
@@ -202,6 +229,10 @@ export function generateCourse(courseId: string, seed: number): Course {
     noiseAmp: preset.noiseAmp,
     noiseSeedA: hashSeed('noiseA', courseId, seed >>> 0),
     noiseSeedB: hashSeed('noiseB', courseId, seed >>> 0),
+    windX: 0,
+    windY: 0,
+    gust: preset.gust,
+    windSeed: hashSeed('wind', courseId, seed >>> 0),
   };
 
   // 落差：区間を等分して、それぞれの中に 1 つ置く
@@ -225,7 +256,26 @@ export function generateCourse(courseId: string, seed: number): Course {
 
   const nearDrop = (y: number, margin: number) => course.drops.some((d) => y > d.y - margin && y < d.y + margin);
 
-  const stoneN = rng.int(preset.stoneCount[0], preset.stoneCount[1]);
+  // 岩の門：流れの速い中央付近に、細い葉なら抜けられる隙間（5〜7cm）を挟んで 2 つの岩を置く
+  for (let i = 0; i < preset.gateCount; i++) {
+    for (let k = 0; k < 30; k++) {
+      const y = rng.range(startY + 120, goalY - 60);
+      if (nearDrop(y, 50) || course.stones.some((s) => Math.abs(s.y - y) < 60)) continue;
+      const w = halfWidthAt(course, y);
+      const c = centerAt(course, y);
+      const gap = rng.range(5, 7);
+      const r = rng.range(4, 6);
+      const x0 = c + rng.range(-0.25, 0.25) * w;
+      const xl = x0 - gap / 2 - r;
+      const xr = x0 + gap / 2 + r;
+      // 外側の回り道は葉が通れる幅を確保
+      if (xl - r - (c - w) < 11 || c + w - (xr + r) < 11) continue;
+      course.stones.push({ x: xl, y, r, bias: -0.7 }, { x: xr, y, r, bias: 0.7 });
+      break;
+    }
+  }
+
+  const stoneN = rng.int(preset.stoneCount[0], preset.stoneCount[1]) + course.stones.length;
   let tries = 0;
   while (course.stones.length < stoneN && tries++ < 600) {
     const r = rng.range(preset.stoneRadius[0], preset.stoneRadius[1]);
@@ -280,6 +330,10 @@ export function generateCourse(courseId: string, seed: number): Course {
     }
   }
   course.covers.sort((a, b) => a.y0 - b.y0);
+
+  // 風：コースごとの傾向は保ちつつ、日によって強さと横風の向きが変わる
+  course.windY = preset.windY * rng.range(0.75, 1.25);
+  course.windX = preset.windX * rng.range(0.6, 1.2) * (rng.next() < 0.5 ? -1 : 1);
   return course;
 }
 
@@ -339,6 +393,13 @@ export function gatherFeatures(c: Course, y: number, radius: number, out: Featur
 }
 
 const NOISE_SCALE = 1 / 18;
+
+/** 時刻 t の風（cm/s）。out[0]=横, out[1]=下流向き */
+export function windAt(c: Course, t: number, out: [number, number]): void {
+  const k = t * 0.35;
+  out[0] = c.windX + c.gust * 0.6 * valueNoise(c.windSeed, k, 0.5);
+  out[1] = c.windY + c.gust * valueNoise(c.windSeed ^ 0x5bd1e995, k, 3.5);
+}
 /** 滝の上流で影響が出始める距離・下流で乱れが続く距離（cm） */
 export const DROP_APPROACH = 25;
 export const DROP_PLUNGE = 45;
@@ -398,8 +459,8 @@ export function flowAt(c: Course, f: FeatureSet, x: number, y: number, t: number
     // 円柱まわりのポテンシャル流（摂動分）
     vy += -U * R2 * (a * a - b * b) / r4;
     vx += -2 * U * R2 * a * b / r4;
-    // 正面ではわずかに横へ逃がす
-    if (a < 0) vx += s.bias * U * R2 / r2;
+    // 正面では横へ逃がす。岸際の遅い水でも岩と岸の角に溜まらないよう、本流の速さを下限にする
+    if (a < 0) vx += s.bias * (U > 0.6 * u0 ? U : 0.6 * u0) * R2 / r2;
     // 下流の後流で減速
     if (a > 0) {
       const ka = a / (4 * s.r);

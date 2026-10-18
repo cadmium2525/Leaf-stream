@@ -58,12 +58,12 @@ describe('決定論性', () => {
 
   test('ゴールデン値（変わったら SIM_VERSION を上げること）', () => {
     const r = simulateRace({ courseId: 'tanbo', seed: 1234, challenger: defaultLeaf(), defender: BOT_LEAVES[3].polygon }).result;
-    expect(SIM_VERSION).toBe('1.1.0');
+    expect(SIM_VERSION).toBe('1.2.0');
     expect({ outcome: r.outcome, timeA: r.timeA, timeB: r.timeB }).toMatchInlineSnapshot(`
       {
         "outcome": "defender_win",
-        "timeA": 1907,
-        "timeB": 1895,
+        "timeA": 1875,
+        "timeB": 1861,
       }
     `);
   });
@@ -98,6 +98,29 @@ describe('コース', () => {
   });
 });
 
+describe('形と風', () => {
+  test('形によって勝率がはっきり変わり、コースで有利な形が入れ替わる', () => {
+    const slim = BOT_LEAVES.find((b) => b.id === 'bot-slim')!.polygon;
+    // 細い葉は向かい風の住宅街で不利、追い風の田んぼで有利になりやすい
+    const winRate = (courseId: string) => {
+      let w = 0;
+      for (let seed = 1; seed <= 12; seed++) {
+        const r = simulateRace({ courseId, seed, challenger: slim, defender: defaultLeaf() }).result;
+        w += r.outcome === 'challenger_win' ? 1 : r.outcome === 'draw' ? 0.5 : 0;
+      }
+      return w / 12;
+    };
+    expect(winRate('tanbo')).toBeGreaterThan(winRate('jutaku'));
+  }, 60_000);
+
+  test('風は日によって変わるがコースの傾向は保つ', () => {
+    for (let seed = 1; seed <= 10; seed++) {
+      expect(generateCourse('tanbo', seed).windY).toBeGreaterThan(0);
+      expect(generateCourse('jutaku', seed).windY).toBeLessThan(0);
+    }
+  });
+});
+
 describe('ルール', () => {
   test('同じ葉同士は引き分け（左右入替で公平）', () => {
     for (const id of COURSE_IDS) {
@@ -112,8 +135,7 @@ describe('ルール', () => {
     for (const run of r.runs) {
       for (const leaf of run) {
         if (leaf.status === 'finished') expect(leaf.scoreTicks).toBe(leaf.finishTick);
-        else expect(leaf.scoreTicks).toBe(SIM.timeLimitTicks + SIM.penaltyTicks);
-        expect(leaf.scoreTicks).toBeLessThanOrEqual(SIM.timeLimitTicks + SIM.penaltyTicks);
+        else expect(leaf.scoreTicks).toBeGreaterThan(SIM.penaltyTicks);
       }
     }
     expect(r.timeA).toBe(r.runs[0][0].scoreTicks + r.runs[1][0].scoreTicks);

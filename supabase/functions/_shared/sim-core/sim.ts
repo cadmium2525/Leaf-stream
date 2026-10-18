@@ -6,16 +6,16 @@
  * - 2 枚の葉は互いに干渉しない（ゴースト）。同じ水を同時に流れる
  */
 import { centroid, polarMoment, pointInPolygon, bounds, area, type Polygon } from './geometry.ts';
-import { centerAt, flowAt, gatherFeatures, generateCourse, halfWidthAt, type Course, type FeatureSet } from './course.ts';
+import { centerAt, flowAt, gatherFeatures, generateCourse, halfWidthAt, windAt, type Course, type FeatureSet } from './course.ts';
 
-export const SIM_VERSION = '1.1.0';
+export const SIM_VERSION = '1.2.0';
 
 export const SIM = {
   dt: 1 / 60,
   /** 1 走の制限時間（tick） */
   timeLimitTicks: 75 * 60,
   /** ゴールできなかった走に加算されるペナルティ（tick） */
-  penaltyTicks: 15 * 60,
+  penaltyTicks: 5 * 60,
   /** この時間内に下流へ stuckMinProgress cm 進めなければ「詰まり」 */
   stuckWindowTicks: 8 * 60,
   stuckMinProgress: 4,
@@ -33,8 +33,20 @@ export const SIM = {
   edgeDrag: 0.028,
   /** 縁の接線方向の摩擦 */
   edgeSkin: 0.004,
+  /** 縁が受ける風の抵抗係数（空気）。縁の長さ・向きで効くので、幅広・切れ込みの多い葉ほど風を受ける */
+  airDrag: 0.0005,
+  /** 引っかかって進まないとき、この時間（tick）を過ぎると渦が葉を本流へ押し出し始める */
+  unstickTicks: 150,
+  /** その押し出しの強さ（cm/s²） */
+  unstickAccel: 30,
+  /** 岸からこの距離（cm）までは横風が弱まる */
+  windShelter: 12,
+  /** 縁の総延長が風を受ける割合（切れ込み・ぎざぎざの多い葉ほど風をはらむ） */
+  airEdge: 0.15,
+  /** 基準面積（初期の葉）。小さい葉ほど水になじみやすい（裏面抵抗が (基準/面積)^0.25 倍） */
+  refArea: 31.7,
   restitution: 0.15,
-  friction: 0.2,
+  friction: 0.45,
   interiorSpacing: 1.5,
   /** スタート位置（半幅に対する横位置の比） */
   startLane: 0.45,
@@ -52,6 +64,10 @@ export interface LeafBody {
   samples: number[];
   /** 辺 [長さ, 外向き法線x, 法線y] */
   edges: number[];
+  /** 裏面抵抗の大きさ補正 */
+  coupling: number;
+  /** 周長（cm） */
+  perimeter: number;
 }
 
 export function prepareLeaf(poly: Polygon): LeafBody {
@@ -95,7 +111,11 @@ export function prepareLeaf(poly: Polygon): LeafBody {
     // 反時計回りなので外向き法線は (dy, -dx)
     edges.push(len, len > 0 ? dy / len : 0, len > 0 ? -dx / len : 0);
   }
-  return { verts, area: a, mass, inertia, radius, samples, edges };
+  // (基準/面積)^0.25：小さい葉ほど水の流れに素早くなじみ、大きい葉は勢いを保つ
+  const coupling = Math.sqrt(Math.sqrt(SIM.refArea / a));
+  let perim = 0;
+  for (let i = 0; i < edges.length; i += 3) perim += edges[i];
+  return { verts, area: a, mass, inertia, radius, samples, edges, coupling, perimeter: perim };
 }
 
 export type RunStatus = 'running' | 'finished' | 'timeout' | 'stuck';
@@ -114,6 +134,9 @@ interface BodyState {
   finishTick: number;
   bestY: number;
   progressTick: number;
+  /** 詰まり・時間切れで止まった tick と位置 */
+  stopTick: number;
+  stopY: number;
   /** 直近の接触の強さ（演出用） */
   contact: number;
   /** 作業用バッファ */
@@ -127,12 +150,13 @@ function makeState(leaf: LeafBody, x: number, y: number): BodyState {
   const nv = leaf.verts.length;
   return {
     leaf, x, y, vx: 0, vy: 0, c: 1, s: 0, w: 0,
-    status: 'running', finishTick: -1, bestY: y, progressTick: 0, contact: 0,
+    status: 'running', finishTick: -1, bestY: y, progressTick: 0, stopTick: -1, stopY: y, contact: 0,
     wx: new Float64Array(nv), wy: new Float64Array(nv), ux: new Float64Array(nv), uy: new Float64Array(nv),
   };
 }
 
 const tmp: [number, number] = [0, 0];
+const wind: [number, number] = [0, 0];
 
 function applyContact(b: BodyState, px: number, py: number, nx: number, ny: number, pen: number): void {
   // 位置の押し戻し（めり込みを残さない）
@@ -179,7 +203,7 @@ function updateWorldVerts(b: BodyState): void {
   }
 }
 
-function stepBody(course: Course, b: BodyState, f: FeatureSet, t: number): void {
+function stepBody(course: Course, b: BodyState, f: FeatureSet, t: number, tick: number): void {
   const L = b.leaf;
   const dt = SIM.dt;
   gatherFeatures(course, b.y, L.radius, f);
@@ -197,7 +221,7 @@ function stepBody(course: Course, b: BodyState, f: FeatureSet, t: number): void 
     flowAt(course, f, b.x + rx, b.y + ry, t, tmp);
     const relx = tmp[0] - (b.vx - b.w * ry);
     const rely = tmp[1] - (b.vy + b.w * rx);
-    const k2 = SIM.underDrag * smp[k + 2];
+    const k2 = SIM.underDrag * L.coupling * smp[k + 2];
     const px = k2 * relx;
     const py = k2 * rely;
     fx += px;
@@ -213,6 +237,7 @@ function stepBody(course: Course, b: BodyState, f: FeatureSet, t: number): void 
     b.uy[i] = tmp[1];
   }
   const e = L.edges;
+  windAt(course, t, wind);
   for (let i = 0; i < nv; i++) {
     const j = i + 1 === nv ? 0 : i + 1;
     const len = e[3 * i];
@@ -241,6 +266,40 @@ function stepBody(course: Course, b: BodyState, f: FeatureSet, t: number): void 
     fx += px;
     fy += py;
     tq += rx * py - ry * px;
+  }
+
+  // 風：風に向かう方向から見た葉の幅（見付け幅）に比例して重心を押す。
+  // 細長い葉は風に沿えば受けにくく、幅広・大きく張った葉ほど受けやすい
+  {
+    // 岸のそばは土手が風よけになり、横風が弱まる（岸際に押し付けられて動けなくなるのを防ぐ）
+    const edge = halfWidthAt(course, b.y) - Math.abs(b.x - centerAt(course, b.y));
+    const shelter = edge <= 0 ? 0 : edge >= SIM.windShelter ? 1 : edge / SIM.windShelter;
+    const ax = wind[0] * shelter - b.vx;
+    const ay = wind[1] - b.vy;
+    const am = Math.sqrt(ax * ax + ay * ay);
+    if (am > 1e-6) {
+      const qx = -ay / am;
+      const qy = ax / am;
+      let lo = Infinity;
+      let hi = -Infinity;
+      for (let i = 0; i < nv; i++) {
+        const d = b.wx[i] * qx + b.wy[i] * qy;
+        if (d < lo) lo = d;
+        if (d > hi) hi = d;
+      }
+      const p = SIM.airDrag * (hi - lo + SIM.airEdge * L.perimeter) * am;
+      fx += p * ax;
+      fy += p * ay;
+    }
+  }
+
+  // 引っかかったまま進まないときは、岩が生む渦が少しずつ本流側（中心・下流）へ押し出す
+  if (b.status === 'running' && tick - b.progressTick > SIM.unstickTicks) {
+    const cx = centerAt(course, b.y);
+    const k = (tick - b.progressTick - SIM.unstickTicks) / 120;
+    const g = SIM.unstickAccel * (k > 2 ? 2 : k) * L.mass;
+    fx += (b.x < cx ? 1 : -1) * g;
+    fy += 0.5 * g;
   }
 
   // 半陰的オイラー
@@ -349,7 +408,7 @@ export interface LeafRunResult {
   status: Exclude<RunStatus, 'running'>;
   /** ゴールした tick（ゴールしていなければ -1） */
   finishTick: number;
-  /** 判定用の時間（tick）。未完走は制限時間＋ペナルティ */
+  /** 判定用の時間（tick）。未完走は「止まった時刻＋残り距離を基準流速で進む時間＋ペナルティ」 */
   scoreTicks: number;
 }
 
@@ -408,7 +467,7 @@ export class RunSim {
         const b = this.bodies[i];
         // ゴールした葉は観戦用にだけ流し続ける（2 枚は干渉しないので勝敗は変わらない）
         if (b.status !== 'running' && !(this.coast && b.status === 'finished')) continue;
-        stepBody(this.course, b, this.features[i], t);
+        stepBody(this.course, b, this.features[i], t, this.tick);
       }
       this.tick++;
       for (const b of this.bodies) {
@@ -423,9 +482,15 @@ export class RunSim {
           b.progressTick = this.tick;
         } else if (this.tick - b.progressTick > SIM.stuckWindowTicks) {
           b.status = 'stuck';
+          b.stopTick = this.tick;
+          b.stopY = b.y;
           continue;
         }
-        if (this.tick >= SIM.timeLimitTicks) b.status = 'timeout';
+        if (this.tick >= SIM.timeLimitTicks) {
+          b.status = 'timeout';
+          b.stopTick = this.tick;
+          b.stopY = b.y;
+        }
       }
       if (this.tick % SIM.traceEvery === 0 || this.done) this.record();
     }
@@ -434,11 +499,13 @@ export class RunSim {
   results(): [LeafRunResult, LeafRunResult] {
     return this.bodies.map((b) => {
       const status = b.status === 'running' ? 'timeout' : b.status;
-      return {
-        status,
-        finishTick: b.finishTick,
-        scoreTicks: status === 'finished' ? b.finishTick : SIM.timeLimitTicks + SIM.penaltyTicks,
-      };
+      if (status === 'finished') return { status, finishTick: b.finishTick, scoreTicks: b.finishTick };
+      // 止まった時刻 ＋ 残りの距離を基準の流速で流れたとみなす時間 ＋ ペナルティ
+      const stopTick = b.stopTick >= 0 ? b.stopTick : this.tick;
+      const stopY = b.stopTick >= 0 ? b.stopY : b.y;
+      const rest = this.course.goalY - stopY;
+      const restTicks = rest > 0 ? Math.floor((rest / this.course.baseSpeed) * 60) : 0;
+      return { status, finishTick: -1, scoreTicks: stopTick + restTicks + SIM.penaltyTicks };
     }) as [LeafRunResult, LeafRunResult];
   }
 

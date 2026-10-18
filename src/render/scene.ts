@@ -91,6 +91,8 @@ export class CanalScene {
   private time = { value: 0 };
   private flow = { value: 0.42 };
   private cover = createCoverUniforms();
+  /** 草が傾く向き（world の x,z。コースの風から） */
+  private windU = { value: new THREE.Vector2() };
   private course: Course | null = null;
   private terrain: Terrain | null = null;
   private courseGroup: THREE.Group | null = null;
@@ -217,6 +219,8 @@ export class CanalScene {
     const g = new THREE.Group();
     this.courseGroup = g;
     this.flow.value = course.baseSpeed * S;
+    // 草のなびき：風（cm/s）をおおよその傾きに換算。下流（+y）は world の -z
+    this.windU.value.set(course.windX * 0.0025, -course.windY * 0.0025);
 
     // 遠景（環境が変わったときだけ作り直す）
     const env = envOf(course.style);
@@ -560,16 +564,21 @@ export class CanalScene {
     const mat = new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.9 });
     const time = this.time;
     const cover = this.cover;
+    const windU = this.windU;
     mat.onBeforeCompile = (shader) => {
       injectCoverShade(shader, cover);
       shader.uniforms.uTime = time;
+      shader.uniforms.uWind = windU;
       shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\nuniform float uTime;')
+        .replace('#include <common>', '#include <common>\nuniform float uTime;\nuniform vec2 uWind;')
         .replace('#include <begin_vertex>', `#include <begin_vertex>
           vec4 wp = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
           float sway = sin(uTime * 1.7 + wp.x * 2.0 + wp.z * 1.3) * 0.5 + sin(uTime * 3.1 + wp.z * 4.0) * 0.25;
           transformed.x += sway * 0.18 * position.y * position.y;
-          transformed.z += sway * 0.08 * position.y * position.y;`);
+          transformed.z += sway * 0.08 * position.y * position.y;
+          // 風下へなびく（インスタンスの回転を打ち消してワールドの向きに合わせる）
+          vec3 lean = vec3(uWind.x, 0.0, uWind.y) * (0.6 + 0.4 * sway) * position.y * position.y;
+          transformed += (inverse(mat3(instanceMatrix)) * lean) * length(instanceMatrix[1].xyz);`);
     };
     const mesh = new THREE.InstancedMesh(blade, mat, count);
     const r = rng(1234 + count);
