@@ -37,9 +37,25 @@ jobs:
           else
             echo "ready=true" >> "$GITHUB_OUTPUT"
           fi
-      - uses: actions/checkout@v4
+      - name: トークンの形式を確認（前後の空白・改行は自動で取り除く）
         if: steps.secrets.outputs.ready == 'true'
-      - uses: actions/setup-node@v4
+        run: |
+          token=$(printf %s "$SUPABASE_ACCESS_TOKEN" | tr -d '[:space:]')
+          ref=$(printf %s "$SUPABASE_PROJECT_REF" | tr -d '[:space:]')
+          echo "::add-mask::$token"
+          echo "SUPABASE_ACCESS_TOKEN=$token" >> "$GITHUB_ENV"
+          echo "SUPABASE_PROJECT_REF=$ref" >> "$GITHUB_ENV"
+          if ! printf %s "$token" | grep -Eq '^sbp_[0-9a-f]{40}$'; then
+            echo "::error::SUPABASE_ACCESS_TOKEN の形式が CLI の期待（sbp_ ＋ 英数字 40 文字）と違います。Access Tokens 画面の「Create legacy token」で作り直して Secret を更新してください。"
+            exit 1
+          fi
+          if ! printf %s "$ref" | grep -Eq '^[a-z0-9]{20}$'; then
+            echo "::error::SUPABASE_PROJECT_REF はプロジェクト ID（英小文字と数字 20 文字）を入れてください。URL 全体ではありません。"
+            exit 1
+          fi
+      - uses: actions/checkout@v5
+        if: steps.secrets.outputs.ready == 'true'
+      - uses: actions/setup-node@v5
         if: steps.secrets.outputs.ready == 'true'
         with:
           node-version: 22
