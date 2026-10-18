@@ -1,0 +1,32 @@
+# Supabase CLI 設定（ローカル開発・デプロイ用の最小構成）
+project_id = "leaf-stream"
+
+[api]
+port = 54321
+schemas = ["public"]
+max_rows = 100
+
+[db]
+port = 54322
+major_version = 15
+
+[auth]
+site_url = "http://localhost:5173"
+additional_redirect_urls = ["http://localhost:5173"]
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+enable_confirmations = false
+
+[functions.leaf-register]
+verify_jwt = true
+
+[functions.race-challenge]
+verify_jwt = true
+
+[functions.race-resolve]
+verify_jwt = true
+
+[functions.account-delete]
+verify_jwt = true
