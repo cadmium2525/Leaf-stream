@@ -58,14 +58,43 @@ describe('決定論性', () => {
 
   test('ゴールデン値（変わったら SIM_VERSION を上げること）', () => {
     const r = simulateRace({ courseId: 'tanbo', seed: 1234, challenger: defaultLeaf(), defender: BOT_LEAVES[3].polygon }).result;
-    expect(SIM_VERSION).toBe('1.0.0');
+    expect(SIM_VERSION).toBe('1.1.0');
     expect({ outcome: r.outcome, timeA: r.timeA, timeB: r.timeB }).toMatchInlineSnapshot(`
       {
-        "outcome": "challenger_win",
-        "timeA": 2117,
-        "timeB": 2143,
+        "outcome": "defender_win",
+        "timeA": 1907,
+        "timeB": 1895,
       }
     `);
+  });
+});
+
+describe('コース', () => {
+  test('どのコースにも小さな滝があり、山里は蛇行する', () => {
+    for (const id of COURSE_IDS) {
+      for (let seed = 1; seed <= 20; seed++) {
+        const c = generateCourse(id, seed);
+        expect(c.drops.length).toBeGreaterThan(0);
+        for (const d of c.drops) expect(d.y).toBeGreaterThan(c.startY + 100);
+        // 石は滝のすぐそばに置かない
+        for (const s of c.stones) for (const d of c.drops) expect(Math.abs(s.y - d.y)).toBeGreaterThan(30);
+      }
+    }
+    expect(generateCourse('yamazato', 3).centers.some((x) => x !== 0)).toBe(true);
+    expect(generateCourse('jutaku', 3).covers.length).toBeGreaterThan(0);
+  });
+
+  test('観戦用にゴール後も流し続けても、勝敗と時間は変わらない', () => {
+    for (const id of COURSE_IDS) {
+      const inp = { courseId: id, seed: 77, challenger: input.challenger, defender: input.defender };
+      const a = simulateRace(inp).result;
+      const b = simulateRace(inp, true);
+      expect(b.result).toEqual(a);
+      // 軌跡はゴールより先まで続いている
+      const tr = b.replay!.traces[0];
+      const lastY = tr.frames[(tr.frameCount - 1) * 10 + 1];
+      if (a.runs[0][0].status === 'finished') expect(lastY).toBeGreaterThan(b.replay!.course.goalY + 30);
+    }
   });
 });
 

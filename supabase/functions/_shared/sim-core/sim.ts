@@ -6,9 +6,9 @@
  * - 2 枚の葉は互いに干渉しない（ゴースト）。同じ水を同時に流れる
  */
 import { centroid, polarMoment, pointInPolygon, bounds, area, type Polygon } from './geometry.ts';
-import { flowAt, gatherFeatures, generateCourse, halfWidthAt, type Course, type FeatureSet } from './course.ts';
+import { centerAt, flowAt, gatherFeatures, generateCourse, halfWidthAt, type Course, type FeatureSet } from './course.ts';
 
-export const SIM_VERSION = '1.0.0';
+export const SIM_VERSION = '1.1.0';
 
 export const SIM = {
   dt: 1 / 60,
@@ -23,6 +23,8 @@ export const SIM = {
   drawThresholdTicks: 2,
   /** 軌跡の記録間隔（tick） */
   traceEvery: 2,
+  /** 観戦用：全員が決着したあとも葉を流し続ける時間（tick）。勝敗には影響しない */
+  coastTicks: 3 * 60,
   /** 面密度 */
   density: 0.12,
   /** 葉の裏面と水の線形抵抗係数 */
@@ -265,8 +267,9 @@ function stepBody(course: Course, b: BodyState, f: FeatureSet, t: number): void 
     let ir = -1;
     for (let i = 0; i < nv; i++) {
       const w = halfWidthAt(course, b.wy[i]);
-      const dl = -w - b.wx[i];
-      const dr = b.wx[i] - w;
+      const cx = centerAt(course, b.wy[i]);
+      const dl = cx - w - b.wx[i];
+      const dr = b.wx[i] - (cx + w);
       if (dl > pl) {
         pl = dl;
         il = i;
@@ -368,18 +371,29 @@ export class RunSim {
   private features: FeatureSet[] = [{ stones: [], eddies: [] }, { stones: [], eddies: [] }];
   private trace: number[] = [];
 
-  constructor(course: Course, left: LeafBody, right: LeafBody) {
+  /** 観戦用の延長：ゴールした葉もそのまま流し、決着後 SIM.coastTicks だけ続ける */
+  private coast: boolean;
+  private tail = 0;
+
+  constructor(course: Course, left: LeafBody, right: LeafBody, opts: { coast?: boolean } = {}) {
     this.course = course;
+    this.coast = !!opts.coast;
     const w = halfWidthAt(course, course.startY);
+    const c = centerAt(course, course.startY);
     this.bodies = [
-      makeState(left, -w * SIM.startLane, course.startY),
-      makeState(right, w * SIM.startLane, course.startY),
+      makeState(left, c - w * SIM.startLane, course.startY),
+      makeState(right, c + w * SIM.startLane, course.startY),
     ];
     this.record();
   }
 
-  get done(): boolean {
+  /** 2 枚とも決着した（ゴール・時間切れ・詰まり） */
+  get settled(): boolean {
     return this.bodies.every((b) => b.status !== 'running');
+  }
+
+  get done(): boolean {
+    return this.settled && (!this.coast || this.tail >= SIM.coastTicks);
   }
 
   private record(): void {
@@ -388,10 +402,12 @@ export class RunSim {
 
   step(n = 1): void {
     for (let k = 0; k < n && !this.done; k++) {
+      if (this.settled) this.tail++;
       const t = this.tick * SIM.dt;
       for (let i = 0; i < 2; i++) {
         const b = this.bodies[i];
-        if (b.status !== 'running') continue;
+        // ゴールした葉は観戦用にだけ流し続ける（2 枚は干渉しないので勝敗は変わらない）
+        if (b.status !== 'running' && !(this.coast && b.status === 'finished')) continue;
         stepBody(this.course, b, this.features[i], t);
       }
       this.tick++;
@@ -489,7 +505,8 @@ export function simulateRace(input: RaceInput, withTrace = false): { result: Rac
   const traces: RunTrace[] = [];
   for (let r = 0; r < 2; r++) {
     const laneA = laneOfChallenger(r);
-    const sim = laneA === 0 ? new RunSim(course, A, B) : new RunSim(course, B, A);
+    const opts = { coast: withTrace };
+    const sim = laneA === 0 ? new RunSim(course, A, B, opts) : new RunSim(course, B, A, opts);
     while (!sim.done) sim.step(600);
     const res = sim.results();
     runs.push(laneA === 0 ? [res[0], res[1]] : [res[1], res[0]]);
