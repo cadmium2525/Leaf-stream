@@ -3,7 +3,7 @@
  * 比較用に「そのままの葉」をゴーストで同時に流す。
  */
 import {
-  RunSim, SIM, defaultLeaf, generateCourse, halfWidthAt, prepareLeaf, type Course, type Polygon,
+  RunSim, SIM, centerAt, defaultLeaf, generateCourse, halfWidthAt, prepareLeaf, type Course, type Polygon,
 } from '../../packages/sim-core/src/index.ts';
 
 export class PreviewChannel {
@@ -92,7 +92,7 @@ export class PreviewChannel {
     const course = this.course;
     // 横向き：左→右が下流。全長を幅に収める
     const sc = w / course.length;
-    const maxHw = Math.max(...course.halfWidths);
+    const maxHw = Math.max(...course.halfWidths) + Math.max(...course.centers.map(Math.abs));
     // 細長い水路なので横方向を強調して描く
     const k = Math.max(1, (h * 0.7) / (2 * maxHw * sc));
     const cy = h / 2;
@@ -102,14 +102,33 @@ export class PreviewChannel {
     ctx.fillRect(0, 0, w, h);
     // 水路
     ctx.beginPath();
-    for (let y = 0; y <= course.length; y += 10) ctx.lineTo(px(y), py(-halfWidthAt(course, y)));
-    for (let y = course.length; y >= 0; y -= 10) ctx.lineTo(px(y), py(halfWidthAt(course, y)));
+    for (let y = 0; y <= course.length; y += 10) ctx.lineTo(px(y), py(centerAt(course, y) - halfWidthAt(course, y)));
+    for (let y = course.length; y >= 0; y -= 10) ctx.lineTo(px(y), py(centerAt(course, y) + halfWidthAt(course, y)));
     ctx.closePath();
     ctx.fillStyle = '#2c5b6e';
     ctx.fill();
     ctx.strokeStyle = '#9a968a';
     ctx.lineWidth = 2;
     ctx.stroke();
+    // 小さな滝（白い線、切り欠きは太く）
+    for (const d of course.drops) {
+      const c = centerAt(course, d.y);
+      const w = halfWidthAt(course, d.y);
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(px(d.y), py(c - w));
+      ctx.lineTo(px(d.y), py(c + w));
+      ctx.stroke();
+      if (d.notchW > 0) {
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(px(d.y), py(d.notchX - d.notchW / 2));
+        ctx.lineTo(px(d.y), py(d.notchX + d.notchW / 2));
+        ctx.stroke();
+      }
+    }
     // 石・渦
     for (const s of course.stones) {
       ctx.fillStyle = '#8b8780';
@@ -127,8 +146,9 @@ export class PreviewChannel {
     ctx.strokeStyle = '#f4e7c0';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(px(course.goalY), py(-halfWidthAt(course, course.goalY)));
-    ctx.lineTo(px(course.goalY), py(halfWidthAt(course, course.goalY)));
+    const gc = centerAt(course, course.goalY);
+    ctx.moveTo(px(course.goalY), py(gc - halfWidthAt(course, course.goalY)));
+    ctx.lineTo(px(course.goalY), py(gc + halfWidthAt(course, course.goalY)));
     ctx.stroke();
     if (!this.sim) return;
     for (const lane of [1, 0] as const) {

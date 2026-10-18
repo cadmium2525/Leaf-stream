@@ -66,6 +66,44 @@ export class Ambience {
     src.start();
   }
 
+  /** カウントダウンの音（n=3,2,1 は短く、0 はスタートの長い音） */
+  beep(n: number): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.master) return;
+    const t = ctx.currentTime + 0.01;
+    const o = ctx.createOscillator();
+    o.type = 'triangle';
+    o.frequency.value = n > 0 ? 660 : 990;
+    const g = ctx.createGain();
+    const len = n > 0 ? 0.14 : 0.5;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.18, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0005, t + len);
+    o.connect(g).connect(this.master);
+    o.start(t);
+    o.stop(t + len + 0.05);
+  }
+
+  /** 滝に落ちたときの大きな水音 */
+  plunge(h: number): void {
+    this.splash(2 + h * 0.6);
+    const ctx = this.ctx;
+    if (!ctx || !this.master) return;
+    const len = 0.6;
+    const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * len), ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 2);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 700;
+    const g = ctx.createGain();
+    g.gain.value = Math.min(0.5, 0.06 * h);
+    src.connect(lp).connect(g).connect(this.master);
+    src.start();
+  }
+
   /** 水の勢い（流速に応じて） */
   setWaterIntensity(v: number): void {
     if (this.waterGain && this.ctx) this.waterGain.gain.setTargetAtTime(0.35 + 0.4 * v, this.ctx.currentTime, 0.5);

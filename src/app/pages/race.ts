@@ -47,7 +47,7 @@ export function racePage(router: Router): Page {
       const scene = getScene();
       scene?.start();
       if (scene) scene.onFrame = null;
-      if (params.get('mode') === 'practice') void startPractice(params.get('bot'));
+      if (params.get('mode') === 'practice') void startPractice(params.get('bot'), params.get('course') ?? 'random');
       else void showSelect();
     },
     unmount() {
@@ -275,6 +275,20 @@ export function racePage(router: Router): Page {
     player.onContact = (s) => {
       if (settings.sound) ambience.splash(s);
     };
+    let countTimer = 0;
+    player.onCount = (n) => {
+      // アニメーションを毎回やり直す
+      countdown.classList.remove('pop', 'go');
+      void countdown.offsetWidth;
+      countdown.textContent = n > 0 ? String(n) : 'スタート！';
+      countdown.classList.add(n > 0 ? 'pop' : 'go');
+      if (settings.sound) ambience.beep(n);
+      window.clearTimeout(countTimer);
+      if (n === 0) countTimer = window.setTimeout(() => { countdown.textContent = ''; }, 900);
+    };
+    player.onDrop = (i, hgt) => {
+      if (settings.sound) ambience.plunge(i === 0 ? hgt : hgt * 0.6);
+    };
     player.onPhase = (p, run) => {
       if (p === 'interlude') {
         banner.textContent = '2 走目：スタート位置を左右入れ替えます';
@@ -288,9 +302,14 @@ export function racePage(router: Router): Page {
       }
     };
     player.onTick = (s: PlayerTick) => {
-      countdown.textContent = s.phase === 'countdown' ? String(Math.ceil(s.countdown)) : '';
-      clock.textContent = s.t.toFixed(2);
       const res = result.runs[s.run];
+      // 2 枚ともゴールしたら時計は止める（葉はそのまま流れ続ける）
+      const allIn = res[0].status === 'finished' && res[1].status === 'finished' && s.finished[0] && s.finished[1];
+      clock.textContent = (allIn ? Math.max(res[0].finishTick, res[1].finishTick) / 60 : s.t).toFixed(2);
+      // 滝の近くでは水音を大きく
+      const lead = Math.max(s.poses[0].y, s.poses[1].y);
+      const near = course.drops.reduce((m, d) => Math.max(m, 1 - Math.min(1, Math.abs(lead - d.y) / 80)), 0);
+      ambience.setWaterIntensity(course.baseSpeed / 50 + near * 0.8);
       (chipA.lastChild as HTMLElement).textContent = s.finished[0] ? ` ${runTimes(res[0])}` : '';
       (chipB.lastChild as HTMLElement).textContent = s.finished[1] ? ` ${runTimes(res[1])}` : '';
       const dots = prog.children;

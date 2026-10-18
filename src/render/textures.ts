@@ -251,6 +251,103 @@ export function grassMaps(size: number): MaterialMaps {
   return { map: toTexture(c), normalMap: normalFromHeight(hc, 1.5) };
 }
 
+/** 自然の土手（湿った土・小石・苔） */
+export function earthMaps(size: number): MaterialMaps {
+  const r = rand(61);
+  const [c, ctx] = canvas(size);
+  const [hc, hctx] = canvas(size);
+  ctx.fillStyle = '#6b5a43';
+  ctx.fillRect(0, 0, size, size);
+  hctx.fillStyle = '#505050';
+  hctx.fillRect(0, 0, size, size);
+  for (let i = 0; i < 70; i++) {
+    const x = r() * size;
+    const y = r() * size;
+    const rad = size * (0.04 + r() * 0.14);
+    const g = ctx.createRadialGradient(x, y, 0, x, y, rad);
+    const col = r() < 0.45 ? '74,96,44' : r() < 0.5 ? '52,42,30' : '120,104,80';
+    g.addColorStop(0, `rgba(${col},${0.25 + r() * 0.3})`);
+    g.addColorStop(1, `rgba(${col},0)`);
+    ctx.fillStyle = g;
+    ctx.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+  }
+  speckle(ctx, size, size, r, size * 40, 0.35);
+  // 小石
+  for (let i = 0; i < size * 0.8; i++) {
+    const x = r() * size;
+    const y = r() * size;
+    const rad = 1 + r() * r() * size * 0.012;
+    const v = 90 + r() * 90;
+    ctx.fillStyle = `rgb(${v},${v * 0.95},${v * 0.85})`;
+    ctx.beginPath();
+    ctx.ellipse(x, y, rad, rad * 0.7, r() * 3, 0, Math.PI * 2);
+    ctx.fill();
+    hctx.fillStyle = '#e0e0e0';
+    hctx.beginPath();
+    hctx.ellipse(x, y, rad, rad * 0.7, 0, 0, Math.PI * 2);
+    hctx.fill();
+  }
+  speckle(hctx, size, size, r, size * 30, 0.5);
+  return { map: toTexture(c), normalMap: normalFromHeight(hc, 3) };
+}
+
+/** アスファルト（道路） */
+export function asphaltMap(size: number): THREE.Texture {
+  const r = rand(71);
+  const [c, ctx] = canvas(size);
+  ctx.fillStyle = '#4a4a48';
+  ctx.fillRect(0, 0, size, size);
+  speckle(ctx, size, size, r, size * 60, 0.45);
+  speckle(ctx, size, size, r, size * 30, 0.25, true);
+  for (let i = 0; i < 20; i++) {
+    const x = r() * size;
+    const y = r() * size;
+    const rad = size * (0.05 + r() * 0.15);
+    const g = ctx.createRadialGradient(x, y, 0, x, y, rad);
+    g.addColorStop(0, `rgba(30,30,28,${0.15 + r() * 0.15})`);
+    g.addColorStop(1, 'rgba(30,30,28,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+  }
+  return toTexture(c);
+}
+
+/** コンクリートブロック塀 */
+export function blockMap(size: number): THREE.Texture {
+  const r = rand(81);
+  const [c, ctx] = canvas(size);
+  ctx.fillStyle = '#9d9a92';
+  ctx.fillRect(0, 0, size, size);
+  speckle(ctx, size, size, r, size * 30, 0.3);
+  const rows = 4;
+  const bh = size / rows;
+  ctx.strokeStyle = 'rgba(60,58,54,0.8)';
+  ctx.lineWidth = 2;
+  for (let i = 0; i <= rows; i++) {
+    ctx.beginPath();
+    ctx.moveTo(0, i * bh);
+    ctx.lineTo(size, i * bh);
+    ctx.stroke();
+    const off = i % 2 === 0 ? 0 : size / 4;
+    for (let x = off; x <= size; x += size / 2) {
+      ctx.beginPath();
+      ctx.moveTo(x, i * bh);
+      ctx.lineTo(x, (i + 1) * bh);
+      ctx.stroke();
+    }
+  }
+  // 雨だれ
+  for (let i = 0; i < 25; i++) {
+    const x = r() * size;
+    const g = ctx.createLinearGradient(0, 0, 0, size);
+    g.addColorStop(0, 'rgba(50,48,40,0.25)');
+    g.addColorStop(1, 'rgba(50,48,40,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x, 0, 3 + r() * 6, size * (0.3 + r() * 0.7));
+  }
+  return toTexture(c);
+}
+
 /** 田んぼ（稲の列） */
 export function paddyMap(size: number): THREE.Texture {
   const r = rand(51);
