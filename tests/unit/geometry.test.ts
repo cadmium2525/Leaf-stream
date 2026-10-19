@@ -38,6 +38,23 @@ describe('基本図形', () => {
     expect(normalizePolygon(n)).toEqual(n);
   });
 
+  test('正規化は冪等：量子化で間隔がちょうど 0.05 になる点があっても 2 回目で変わらない', () => {
+    // 1.4100001 - 1.36 は 0.05 以上だが、量子化後の 1.41 - 1.36 は浮動小数で 0.0499… になる
+    const p: Polygon = [[-2, -2], [2, -2], [2, 2], [0.76, 1.36], [0.74, 1.4100001], [-2, 2]];
+    const n = normalizePolygon(p);
+    expect(normalizePolygon(n)).toEqual(n);
+    // 切った片はどれもサーバーの「正規化済み」チェック（再正規化と完全一致）を通る
+    const rng = new Rng(3);
+    for (let it = 0; it < 3000; it++) {
+      const path: [number, number][] = [];
+      for (let j = 0, m = rng.int(2, 4); j < m; j++) path.push([rng.range(-4, 4), rng.range(-6, 6)]);
+      for (const piece of splitPolygonByPath(defaultLeaf(), path)) {
+        const q = normalizePolygon(piece);
+        expect(JSON.stringify(normalizePolygon(q))).toBe(JSON.stringify(q));
+      }
+    }
+  });
+
   test('頂点数は上限まで削減される', () => {
     const p: Polygon = [];
     for (let i = 0; i < 200; i++) {

@@ -202,9 +202,22 @@ export function simplify(p: Polygon, maxVertices: number): Polygon {
 
 /**
  * 外形を正規化する：近接・共線点の除去、反時計回り、頂点削減、量子化。
- * 結果は JSON 往復しても同じ値になる。
+ * 結果は JSON 往復しても同じ値になり、もう一度正規化しても変わらない（冪等）。
  */
 export function normalizePolygon(p: Polygon): Polygon {
+  let out = normalizeOnce(p);
+  // 量子化で 2 点の間隔がちょうど 0.05cm（浮動小数では 0.0499…）になると、
+  // 2 回目の正規化でその点が消える。サーバーは「正規化済み」を厳密に比べるので、変わらなくなるまで繰り返す。
+  // 繰り返すたびに頂点は減るだけなので必ず止まる
+  for (let i = 0; i < LEAF_RULES.maxVertices && out.length >= 3; i++) {
+    const next = normalizeOnce(out);
+    if (next.length === out.length && next.every((v, k) => v[0] === out[k][0] && v[1] === out[k][1])) break;
+    out = next;
+  }
+  return out;
+}
+
+function normalizeOnce(p: Polygon): Polygon {
   let out = cleanup(p, 0.05);
   if (out.length < 3) return out;
   if (signedArea(out) < 0) out.reverse();
