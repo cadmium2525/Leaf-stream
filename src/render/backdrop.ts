@@ -39,8 +39,11 @@ function houses(g: THREE.Group, r: () => number, n: number, near: number, far: n
     roof.scale.set(w * 1.15, w * 0.9, d * 1.1);
     roof.position.y = hgt;
     house.add(body, roof);
-    house.position.set(side * (near + r() * (far - near)), groundY, 12 - r() * 130);
-    house.rotation.y = (r() - 0.5) * 0.3 + (r() < 0.3 ? Math.PI / 2 : 0);
+    const turned = r() < 0.3;
+    house.rotation.y = (r() - 0.5) * 0.3 + (turned ? Math.PI / 2 : 0);
+    // near は家の手前の端までの距離。中心で測ると幅の広い家が水路にはみ出す（屋根の張り出しと傾きのぶんも見込む）
+    const half = ((turned ? d : w) * 1.15) / 2 + 0.5;
+    house.position.set(side * (near + half + r() * (far - near)), groundY, 12 - r() * 130);
     g.add(house);
   }
 }
@@ -156,7 +159,7 @@ export function buildBackdrop(env: Env, treeCount: number): THREE.Group {
     ground.position.y = -0.2;
     g.add(ground);
     hills(g, r, 8, 0x4a5f4a, [120, 180], 0.8);
-    houses(g, r, 26, 3.5, 18, -0.2);
+    houses(g, r, 26, 4.5, 16, -0.2);
     poles(g, 3.2, -0.2);
   } else {
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: 0x3b4a2c, roughness: 1 }));

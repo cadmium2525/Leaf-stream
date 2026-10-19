@@ -19,8 +19,10 @@ export class Ambience {
   }
 
   async start(): Promise<void> {
+    // iOS ではバックグラウンドから戻ると suspended / interrupted のまま止まる。ユーザー操作の中で再開する
+    if (this.ctx && this.ctx.state === 'closed') this.stop();
     if (this.ctx) {
-      await this.ctx.resume();
+      await this.ctx.resume().catch(() => undefined);
       return;
     }
     const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -36,6 +38,11 @@ export class Ambience {
     this.insects(ctx, master);
     this.scheduleBirds(ctx, master);
     this.scheduleChime(ctx, master);
+  }
+
+  /** 画面に戻ったときの再開（ユーザー操作なしでは許可されない環境もある） */
+  resume(): void {
+    if (this.ctx && this.ctx.state !== 'running' && this.ctx.state !== 'closed') void this.ctx.resume().catch(() => undefined);
   }
 
   stop(): void {

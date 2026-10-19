@@ -40,18 +40,20 @@ onSettingsChange(() => {
   } else ambience.stop();
 });
 
-/** 最初のユーザー操作で環境音を始める（自動再生ポリシー対策） */
+/**
+ * ユーザー操作で環境音を始める（自動再生ポリシー対策）。
+ * iOS ではブラウザを離れて戻ると音が止まったままになるので、操作のたびに再開を試みる
+ */
 export function armAudio(): void {
   const go = () => {
-    if (settings.sound) {
-      ambience.setVolume(settings.volume);
-      void ambience.start();
-    }
-    window.removeEventListener('pointerdown', go);
-    window.removeEventListener('keydown', go);
+    if (!settings.sound || ambience.running) return;
+    ambience.setVolume(settings.volume);
+    void ambience.start();
   };
-  window.addEventListener('pointerdown', go);
-  window.addEventListener('keydown', go);
+  for (const ev of ['pointerdown', 'touchend', 'keydown']) window.addEventListener(ev, go, { passive: true });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && settings.sound) ambience.resume();
+  });
 }
 
 /** 葉っぱのサムネイルを canvas に描く */
