@@ -91,6 +91,9 @@ function hills(g: THREE.Group, r: () => number, n: number, color: number, dist: 
   }
 }
 
+/** 水路の中心から木の枝先までの最小距離（m） */
+const TREE_CLEAR = 1.6;
+
 /** 杉と広葉樹の林（インスタンス描画） */
 function forest(g: THREE.Group, r: () => number, count: number, groundY: number): void {
   const cone = new THREE.ConeGeometry(1, 1, 7);
@@ -107,10 +110,12 @@ function forest(g: THREE.Group, r: () => number, count: number, groundY: number)
   let nb = 0;
   for (let i = 0; i < count; i++) {
     const side = r() < 0.5 ? -1 : 1;
-    const dist = 2.2 + Math.pow(r(), 0.7) * 40;
+    const h = 5 + r() * 9;
+    // 枝の張り出し（半径 h*0.2）が水路の上にかからないように、幹ではなく枝先から距離をとる。
+    // 近すぎると正面に大きな暗い円錐が立ちふさがって見える
+    const dist = TREE_CLEAR + h * 0.2 + Math.pow(r(), 0.7) * 40;
     const x = side * dist;
     const z = 14 - r() * 140;
-    const h = 5 + r() * 9;
     const y = groundY - 0.2 + (dist > 6 ? (dist - 6) * 0.25 : 0);
     q.setFromEuler(new THREE.Euler(0, r() * 6.28, 0));
     m.compose(new THREE.Vector3(x, y + h * 0.25, z), q, new THREE.Vector3(h * 0.2, h * 0.8, h * 0.2));
@@ -120,8 +125,8 @@ function forest(g: THREE.Group, r: () => number, count: number, groundY: number)
     m.compose(new THREE.Vector3(x, y, z), q, new THREE.Vector3(1, h * 0.35, 1));
     trunks.setMatrixAt(i, m);
     if (i % 3 === 0 && nb < broad.count) {
-      const bx = side * (2 + r() * 25);
       const s = 1.5 + r() * 2.5;
+      const bx = side * (TREE_CLEAR + s * 1.2 + r() * 25);
       m.compose(new THREE.Vector3(bx, groundY + s * 0.9, 12 - r() * 140), q, new THREE.Vector3(s * 1.2, s, s * 1.1));
       broad.setMatrixAt(nb, m);
       color.setHSL(0.25 + r() * 0.06, 0.4, 0.3 + r() * 0.1);
