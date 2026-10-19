@@ -284,7 +284,12 @@ export function racePage(router: Router): Page {
       player.speed = player.speed === 1 ? 2 : player.speed === 2 ? 4 : 1;
       speedBtn.textContent = `×${player.speed}`;
     });
-    skipBtn.addEventListener('click', () => player?.skipRun());
+    skipBtn.addEventListener('click', () => {
+      player?.skipRun();
+      // カウントダウン中に飛ばしたとき、数字が残らないように消す
+      window.clearTimeout(countTimer);
+      countdown.textContent = '';
+    });
     resultBtn.addEventListener('click', () => player?.skipAll());
 
     const runTimes = (r: LeafRunResult) => (r.status === 'finished' ? ticksToSeconds(r.finishTick).toFixed(2) : statusText(r));

@@ -68,8 +68,11 @@ export class ReplayPlayer {
   skipRun(): void {
     if (this.phase === 'running' || this.phase === 'countdown') {
       this.t = this.duration;
-      this.phase = 'running';
-      this.phaseTime = 0;
+      if (this.phase === 'countdown') {
+        // カウントダウン中に飛ばしたときも、走り出したことを知らせる（2 走目の表示切替など）
+        this.lastCount = -1;
+        this.setPhase('running');
+      } else this.phaseTime = 0;
     }
   }
 
