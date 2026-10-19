@@ -201,6 +201,8 @@ export function racePage(router: Router): Page {
       }
       // 公式結果はサーバーで確定。観戦と並行して確定を依頼する
       const official = resolveWithRetry(race.id);
+      // 観戦中（または途中で画面を離れたあと）に失敗しても未処理の拒否にしない。失敗は結果画面で表示する
+      official.catch(() => undefined);
       await play({
         ranked: true, raceId: race.id, courseId: race.course_id, seed: race.seed,
         me: race.challenger_shape, opp: race.defender_shape, oppName: race.defender_name,
