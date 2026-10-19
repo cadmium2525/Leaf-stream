@@ -295,9 +295,6 @@ export function racePage(router: Router): Page {
     resultBtn.addEventListener('click', () => player?.skipAll());
 
     const runTimes = (r: LeafRunResult) => (r.status === 'finished' ? ticksToSeconds(r.finishTick).toFixed(2) : statusText(r));
-    player.onContact = (s) => {
-      if (settings.sound) ambience.splash(s);
-    };
     let countTimer = 0;
     player.onCount = (n) => {
       // アニメーションを毎回やり直す
@@ -308,9 +305,6 @@ export function racePage(router: Router): Page {
       if (settings.sound) ambience.beep(n);
       window.clearTimeout(countTimer);
       if (n === 0) countTimer = window.setTimeout(() => { countdown.textContent = ''; }, 900);
-    };
-    player.onDrop = (i, hgt) => {
-      if (settings.sound) ambience.plunge(i === 0 ? hgt : hgt * 0.6);
     };
     player.onPhase = (p, run) => {
       if (p === 'interlude') {

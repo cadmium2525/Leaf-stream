@@ -31,11 +31,8 @@ export class ReplayPlayer {
   speed = 1;
   onTick: ((s: PlayerTick) => void) | null = null;
   onPhase: ((p: Phase, run: number) => void) | null = null;
-  onContact: ((strength: number) => void) | null = null;
   /** カウントダウン：3, 2, 1 と、スタートの瞬間に 0 */
   onCount: ((n: number) => void) | null = null;
-  /** 葉が滝の落ち口を越えた（i=0 が自分） */
-  onDrop: ((i: number, h: number) => void) | null = null;
   /** 滝を越える瞬間にスローモーションにする */
   slowmo = true;
 
@@ -44,8 +41,6 @@ export class ReplayPlayer {
     { x: 0, y: 0, c: 1, s: 0, contact: 0 },
     { x: 0, y: 0, c: 1, s: 0, contact: 0 },
   ];
-  private lastContact = [0, 0];
-  private lastY: (number | null)[] = [null, null];
   private lastCount = -1;
   private slow = 1;
   private useCountdown: boolean;
@@ -123,7 +118,6 @@ export class ReplayPlayer {
       if (this.phaseTime >= INTERLUDE) {
         this.run++;
         this.t = 0;
-        this.lastY = [null, null];
         // 2 走目もカウントダウンから
         this.setPhase(this.useCountdown ? 'countdown' : 'running');
       }
@@ -148,15 +142,6 @@ export class ReplayPlayer {
       this.scene.setPose(i, this.poses[i]);
       const r = runRes[i];
       finished[i] = r.status === 'finished' && t * 60 >= r.finishTick;
-      const y = this.poses[i].y;
-      const ly = this.lastY[i];
-      if (ly !== null && this.phase === 'running') {
-        for (const d of this.replay.course.drops) if (ly < d.y && y >= d.y) this.onDrop?.(i, d.h);
-      }
-      this.lastY[i] = y;
-      const c = this.poses[i].contact;
-      if (c > 1.2 && this.lastContact[i] <= 1.2) this.onContact?.(c);
-      this.lastContact[i] = c;
     }
     this.onTick?.({
       phase: this.phase,

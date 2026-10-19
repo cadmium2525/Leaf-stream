@@ -46,26 +46,6 @@ export class Ambience {
     this.master = null;
   }
 
-  /** 水しぶき（接触時） */
-  splash(strength: number): void {
-    const ctx = this.ctx;
-    if (!ctx || !this.master) return;
-    const len = 0.25;
-    const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * len), ctx.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 3);
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    const bp = ctx.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.frequency.value = 1800 + Math.random() * 1200;
-    bp.Q.value = 1.2;
-    const g = ctx.createGain();
-    g.gain.value = Math.min(0.5, 0.12 * strength);
-    src.connect(bp).connect(g).connect(this.master);
-    src.start();
-  }
-
   /** カウントダウンの音（n=3,2,1 は短く、0 はスタートの長い音） */
   beep(n: number): void {
     const ctx = this.ctx;
@@ -82,26 +62,6 @@ export class Ambience {
     o.connect(g).connect(this.master);
     o.start(t);
     o.stop(t + len + 0.05);
-  }
-
-  /** 滝に落ちたときの大きな水音 */
-  plunge(h: number): void {
-    this.splash(2 + h * 0.6);
-    const ctx = this.ctx;
-    if (!ctx || !this.master) return;
-    const len = 0.6;
-    const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * len), ctx.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 2);
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    const lp = ctx.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.value = 700;
-    const g = ctx.createGain();
-    g.gain.value = Math.min(0.5, 0.06 * h);
-    src.connect(lp).connect(g).connect(this.master);
-    src.start();
   }
 
   /** 水の勢い（流速に応じて） */
