@@ -27,9 +27,10 @@ npm run dev        # http://localhost:5173
 | パス | 内容 |
 | --- | --- |
 | `/` | 用水路のデモ（ボット同士のレースを眺める）、各画面への導線 |
-| `/editor` | 切断、Undo/Redo、形状検証、プレビュー水路、練習レース、登録 |
+| `/editor` | 切断、Undo/Redo、形状検証、プレビュー水路、練習レース、登録。`?for=endless` でどこまでもモード用の葉（レース用とは別に保存） |
 | `/race` | ランク戦／練習の選択、カウントダウン、観戦（追従／俯瞰、×1/×2/×4、走スキップ）、結果 |
-| `/leaderboard` | 最高連勝・現在の連勝・今週の最高連勝、ページ切替 |
+| `/endless` | どこまでもモード：流す位置（左右）を決めて、詰まるまで観戦。距離を記録してランキングへ |
+| `/leaderboard` | ランク戦（最高連勝・現在の連勝・今週の最高連勝）と、どこまでもモード（今週・歴代の距離）、ページ切替 |
 | `/account` | 「プレイヤー」画面：ランキングに表示する名前、戦績、登録中の葉っぱ、データ削除 |
 | `/about` | ルール、プライバシーポリシー、通報・問い合わせ、素材と権利 |
 
@@ -54,7 +55,7 @@ src/
   api/                  Supabase クライアント（公開 anon キーのみ）
 supabase/
   migrations/           スキーマ・RLS・サーバー関数（register / challenge / resolve / leaderboard）
-  functions/            Edge Functions（Deno）：leaf-register / race-challenge / race-resolve / account-delete
+  functions/            Edge Functions（Deno）：leaf-register / race-challenge / race-resolve / endless-submit / account-delete
   tests/                DB 統合テスト（ローカル PostgreSQL で実行）
 tests/unit/             幾何・乱数・物理・戦績ルール・エディタ
 ```
@@ -85,6 +86,16 @@ tests/unit/             幾何・乱数・物理・戦績ルール・エディ�
 
 シミュレーションの式や定数を変えたら `SIM_VERSION` を上げてください（ゴールデン値テストが失敗して知らせます）。未確定のレースは版の不一致で確定を拒否し、戦績に反映しません。
 
+### どこまでもモード
+
+`packages/sim-core/src/endless.ts`。レースと同じ物理（`stepBody`）で 1 枚の葉を流し続けます。
+
+- コースは「区間」をつないだもの。区間の両端は半幅 18cm・中心 0 のまっすぐな水路で、葉が区間の終わりを越えると次の区間の頭へ移ります。見た目（田んぼ・住宅街・山里）は同じものが続かないように選びます
+- 週キーからシードが決まり、全員が同じコースを流れます（毎週月曜 UTC に変わる）
+- 仕掛け：**滝壺の逆流**（落ち口の下の水面が上流へ戻る。逆流より短い・軽い葉は抜け出せず、縦に回り続ける）、**杭の列**（隙間より幅の広い葉が引っかかる）。遠くへ進むほど数が増え、杭の隙間が狭く、逆流が長くなります
+- レースと違い、引っかかっても押し出しません。6 秒間で 4cm 進めなければ終わり。制限時間は 8 分
+- 記録は「進んだ最大距離（cm）」。サーバーが葉の形と流す位置（-10..10）から同じ計算をして確定します（Node と Deno で一致を確認）
+
 ## ランク戦（Supabase）を有効にする
 
 手順は [docs/SETUP.md](docs/SETUP.md) にまとめています。要点：
@@ -112,6 +123,8 @@ VITE_SUPABASE_ANON_KEY=<anon public key または publishable key>
 | `POST /race/{id}/resolve` | Edge `race-resolve` → `resolve_race()` | サーバーだけで計算、単一トランザクションで戦績更新、確定済みなら同じ結果 |
 | `GET /race/{id}` | `races` テーブル（RLS） | 当事者のみ。観戦用の軌跡はスナップショットから端末で再計算 |
 | `GET /leaderboard` | `get_leaderboard()` | 誰でも。1 回 50 件まで |
+| `POST /endless/submit` | Edge `endless-submit` → `submit_endless()` | 本人認証、葉の形と流す位置からサーバーだけで距離を再計算、自己ベストのときだけ更新、1 時間 120 回まで |
+| `GET /endless/leaderboard` | `get_endless_leaderboard()` | 誰でも。週キーか `all`（一人一件の歴代ベスト）。1 回 50 件まで |
 
 - 相手抽選は `leaves.rand_key`（インデックス）で `ORDER BY random()` の全件ソートを避けています。相手がいなければ練習ボットに切り替え（ランク外）
 - 未確定のランク戦は 1 ユーザー 1 件まで（部分ユニークインデックス）。10 分放置で失効、確定失敗は `failed` にして戦績に反映しません

@@ -226,3 +226,56 @@ export async function rankedEnabled(): Promise<boolean> {
   const { data } = await supabase.from('service_flags').select('ranked_enabled').maybeSingle();
   return data?.ranked_enabled ?? false;
 }
+
+// ---------- どこまでもモード ----------
+
+export interface EndlessSubmitResult {
+  week: string;
+  /** サーバーが再計算した距離（cm） */
+  distance: number;
+  reason: string;
+  improved: boolean;
+  /** 今週の自己ベスト（cm） */
+  best: number;
+  /** 今週の順位 */
+  rank: number;
+}
+
+/** POST /endless-submit。距離はサーバーが葉の形と流す位置から計算し直す */
+export async function submitEndless(polygon: Polygon, species: SpeciesId, lane: number, week: string, version: string): Promise<EndlessSubmitResult> {
+  return call('endless-submit', { polygon, species, lane, week, version });
+}
+
+export interface EndlessRow {
+  rank: number;
+  user_id: string;
+  display_name: string;
+  distance_cm: number;
+  species: string;
+  week_key: string;
+}
+
+/** どこまでもモードのランキング。week は週キー、'all' で歴代 */
+export async function endlessLeaderboard(week: string, page: number, pageSize = 20): Promise<EndlessRow[]> {
+  const { data, error } = await need().rpc('get_endless_leaderboard', { p_week: week, p_limit: pageSize, p_offset: page * pageSize });
+  if (error) throw new ApiError('internal');
+  return ((data ?? []) as EndlessRow[]).map((r) => ({ ...r, rank: Number(r.rank) }));
+}
+
+/** 自分の記録（今週と歴代のベスト、cm）。未参加なら null */
+export async function myEndless(week: string): Promise<{ week: number | null; all: number | null }> {
+  const sb = need();
+  const s = await getSession();
+  if (!s) return { week: null, all: null };
+  const { data } = await sb.from('endless_records').select('week_key,distance_cm').eq('user_id', s.user.id)
+    .order('distance_cm', { ascending: false }).limit(60);
+  const rows = (data ?? []) as { week_key: string; distance_cm: number }[];
+  return {
+    week: rows.find((r) => r.week_key === week)?.distance_cm ?? null,
+    all: rows.length ? rows[0].distance_cm : null,
+  };
+}
+ERROR_TEXT.bad_lane = '流す位置が正しくありません';
+ERROR_TEXT.bad_week = '週が変わりました。ページを再読み込みしてください';
+ERROR_TEXT.bad_species = '葉っぱの種類が正しくありません';
+ERROR_TEXT.race_not_pending = 'このレースはすでに確定しています';

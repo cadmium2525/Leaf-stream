@@ -3,6 +3,7 @@ import { Router } from './app/router.ts';
 import { homePage } from './app/pages/home.ts';
 import { editorPage } from './app/pages/editor.ts';
 import { racePage } from './app/pages/race.ts';
+import { endlessPage } from './app/pages/endless.ts';
 import { leaderboardPage } from './app/pages/leaderboard.ts';
 import { accountPage } from './app/pages/account.ts';
 import { aboutPage } from './app/pages/about.ts';
@@ -23,6 +24,7 @@ router
   .add('/', homePage)
   .add('/editor', () => editorPage(router))
   .add('/race', () => racePage(router))
+  .add('/endless', () => endlessPage(router))
   .add('/leaderboard', leaderboardPage)
   .add('/account', () => accountPage(router))
   .add('/about', aboutPage)

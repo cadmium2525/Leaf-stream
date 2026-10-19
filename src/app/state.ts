@@ -17,6 +17,12 @@ export interface LeafDraft {
 
 const KEY_SETTINGS = 'leafstream.settings.v1';
 const KEY_DRAFT = 'leafstream.draft.v1';
+/** どこまでもモード用の葉はレース用とは別に保存する */
+const KEY_DRAFT_ENDLESS = 'leafstream.draft.endless.v1';
+const KEY_ENDLESS = 'leafstream.endless.v1';
+
+/** 葉っぱの用途：レース用／どこまでもモード用 */
+export type DraftKind = 'race' | 'endless';
 
 function load<T>(key: string, fallback: T): T {
   try {
@@ -50,8 +56,8 @@ export function onSettingsChange(fn: () => void): () => void {
   return () => listeners.delete(fn);
 }
 
-export function loadDraft(): LeafDraft {
-  const d = load<Partial<LeafDraft>>(KEY_DRAFT, {});
+export function loadDraft(kind: DraftKind = 'race'): LeafDraft {
+  const d = load<Partial<LeafDraft>>(kind === 'endless' ? KEY_DRAFT_ENDLESS : KEY_DRAFT, {});
   const species = isSpeciesId(d.species) ? d.species : 'sakura';
   const fresh = { polygon: getSpecies(species).polygon, cuts: 0, species };
   if (!d.polygon) return fresh;
@@ -61,8 +67,23 @@ export function loadDraft(): LeafDraft {
   return { polygon: p, cuts: Math.max(0, Math.min(99, (d.cuts ?? 0) | 0)), species };
 }
 
-export function saveDraft(d: LeafDraft): void {
-  save(KEY_DRAFT, d);
+export function saveDraft(d: LeafDraft, kind: DraftKind = 'race'): void {
+  save(kind === 'endless' ? KEY_DRAFT_ENDLESS : KEY_DRAFT, d);
+}
+
+/** どこまでもモードの端末内の記録：流す位置と、週ごとの自己ベスト（cm） */
+export interface EndlessLocal {
+  lane: number;
+  week: string;
+  best: number;
+}
+
+export function loadEndlessLocal(): EndlessLocal {
+  return load<EndlessLocal>(KEY_ENDLESS, { lane: 0, week: '', best: 0 });
+}
+
+export function saveEndlessLocal(v: EndlessLocal): void {
+  save(KEY_ENDLESS, v);
 }
 
 export function isMobile(): boolean {

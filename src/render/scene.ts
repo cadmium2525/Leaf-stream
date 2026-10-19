@@ -269,8 +269,10 @@ export class CanalScene {
       this.water.uniforms.uWall.value.set('#5d6b4a');
     }
     const stones = this.water.uniforms.uStones.value;
-    course.stones.slice(0, MAX_STONES).forEach((s, i) => stones[i].set(s.x * S, -s.y * S, s.r * S * 0.95, 1));
-    this.water.uniforms.uStoneCount.value = Math.min(course.stones.length, MAX_STONES);
+    // 水面の跡は岩を優先し、残りの枠に杭を入れる
+    const wakes = [...course.stones.filter((s) => !s.post), ...course.stones.filter((s) => s.post)].slice(0, MAX_STONES);
+    wakes.forEach((s, i) => stones[i].set(s.x * S, -s.y * S, s.r * S * 0.95, 1));
+    this.water.uniforms.uStoneCount.value = wakes.length;
     const drops = this.water.uniforms.uDrops.value;
     course.drops.slice(0, MAX_DROPS).forEach((d, i) => drops[i].set(-d.y * S, d.h * S, d.notchX * S, d.notchW * S));
     this.water.uniforms.uDropCount.value = Math.min(course.drops.length, MAX_DROPS);
@@ -434,7 +436,26 @@ export class CanalScene {
     const stoneMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.0 });
     addCoverShade(stoneMat, this.cover);
     const r = rng(course.seed ^ 0x51);
+    // 杭（どこまでもモード）：水面から突き出た細い木の杭
+    const posts = course.stones.filter((s) => s.post);
+    if (posts.length) {
+      const woodMat = new THREE.MeshStandardMaterial({ color: 0x6b5236, roughness: 0.9 });
+      addCoverShade(woodMat, this.cover);
+      const geo = new THREE.CylinderGeometry(1, 1.1, 1, 7);
+      for (const s of posts) {
+        const bottom = T.bed(s.y) - DEPTH;
+        const top = T.water(s.y) + 0.05 + r() * 0.04;
+        const m = new THREE.Mesh(geo, woodMat);
+        m.scale.set(s.r * S, top - bottom, s.r * S);
+        m.position.set(s.x * S, (top + bottom) / 2, -s.y * S);
+        m.rotation.set((r() - 0.5) * 0.12, r() * Math.PI, (r() - 0.5) * 0.12);
+        m.castShadow = q.shadows;
+        m.receiveShadow = true;
+        g.add(m);
+      }
+    }
     for (const s of course.stones) {
+      if (s.post) continue;
       const geo = new THREE.IcosahedronGeometry(1, this.quality === 'eco' ? 2 : 3);
       const pos = geo.attributes.position as THREE.BufferAttribute;
       const phase = [r() * 10, r() * 10, r() * 10];
@@ -722,8 +743,11 @@ export class CanalScene {
       l.pitch += (target - l.pitch) * Math.min(1, dt * 14);
       const bob = 0.0025 + Math.sin(t * 2.3 + i * 1.7) * 0.0012;
       l.outer.visible = true;
-      l.outer.position.set(x, surface + bob, z);
-      l.outer.rotation.set(l.pitch, 0, 0);
+      // 滝壺で縦に回るときは、一回転ごとに水中へ沈んでまた浮かぶ
+      const tumble = p.tumble ?? 0;
+      const dip = tumble ? (1 - Math.cos(tumble)) * 0.012 : 0;
+      l.outer.position.set(x, surface + bob - dip, z);
+      l.outer.rotation.set(l.pitch + tumble, 0, 0);
       l.inner.rotation.set(Math.sin(t * 1.9 + i) * 0.03, yaw, Math.sin(t * 2.6 + i * 2) * 0.03);
       l.shadow.visible = true;
       l.shadow.position.set(x - sunOff.x, (T ? T.bed(p.y) : 0) - DEPTH + 0.002, z - sunOff.y);

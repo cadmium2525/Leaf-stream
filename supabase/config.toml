@@ -34,3 +34,6 @@ verify_jwt = false
 
 [functions.account-delete]
 verify_jwt = false
+
+[functions.endless-submit]
+verify_jwt = false

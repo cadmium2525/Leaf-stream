@@ -120,7 +120,7 @@ export function prepareLeaf(poly: Polygon): LeafBody {
 
 export type RunStatus = 'running' | 'finished' | 'timeout' | 'stuck';
 
-interface BodyState {
+export interface BodyState {
   leaf: LeafBody;
   x: number;
   y: number;
@@ -146,7 +146,7 @@ interface BodyState {
   uy: Float64Array;
 }
 
-function makeState(leaf: LeafBody, x: number, y: number): BodyState {
+export function makeState(leaf: LeafBody, x: number, y: number): BodyState {
   const nv = leaf.verts.length;
   return {
     leaf, x, y, vx: 0, vy: 0, c: 1, s: 0, w: 0,
@@ -203,7 +203,10 @@ function updateWorldVerts(b: BodyState): void {
   }
 }
 
-function stepBody(course: Course, b: BodyState, f: FeatureSet, t: number, tick: number): void {
+/**
+ * 1 枚の葉を 1 tick 進める。unstick=false なら引っかかっても押し出さない（どこまでもモード：詰まったら終わり）
+ */
+export function stepBody(course: Course, b: BodyState, f: FeatureSet, t: number, tick: number, unstick = true): void {
   const L = b.leaf;
   const dt = SIM.dt;
   gatherFeatures(course, b.y, L.radius, f);
@@ -294,7 +297,7 @@ function stepBody(course: Course, b: BodyState, f: FeatureSet, t: number, tick: 
   }
 
   // 引っかかったまま進まないときは、岩が生む渦が少しずつ本流側（中心・下流）へ押し出す
-  if (b.status === 'running' && tick - b.progressTick > SIM.unstickTicks) {
+  if (unstick && b.status === 'running' && tick - b.progressTick > SIM.unstickTicks) {
     const cx = centerAt(course, b.y);
     const k = (tick - b.progressTick - SIM.unstickTicks) / 120;
     const g = SIM.unstickAccel * (k > 2 ? 2 : k) * L.mass;

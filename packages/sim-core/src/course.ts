@@ -12,6 +12,8 @@ export interface Stone {
   r: number;
   /** 正面のよどみ点で流れが左右どちらへ逃げるか（-1..1）。葉の張り付きを防ぐ */
   bias: number;
+  /** 杭（どこまでもモードの仕掛け）。当たり判定は岩と同じ円で、見た目だけが違う */
+  post?: boolean;
 }
 
 export interface Eddy {
@@ -30,6 +32,11 @@ export interface Drop {
   /** 切り欠き（岩の隙間・堰の欠け）の中心 x。notchW=0 なら切り欠きなし */
   notchX: number;
   notchW: number;
+  /**
+   * 滝壺の逆流（どこまでもモードの仕掛け）。落ち口から下流 roll cm の水面が上流へ戻る。
+   * 短い葉は落ち口の下で行ったり来たりして抜け出せず、長い葉は逆流の外まで届いて抜ける
+   */
+  roll?: number;
 }
 
 /** 側溝のふた（暗渠）。見た目だけで流れには影響しない */
@@ -187,7 +194,16 @@ export function getPreset(courseId: string): CoursePreset {
 /** コース ID とシードからコースを決定論的に生成する */
 export function generateCourse(courseId: string, seed: number): Course {
   const preset = getPreset(courseId);
-  const rng = new Rng(hashSeed('course', courseId, seed >>> 0));
+  return buildCourse(preset, seed, new Rng(hashSeed('course', courseId, seed >>> 0)));
+}
+
+/**
+ * プリセットと乱数からコースを組み立てる。
+ * joint を指定すると、両端（最初と最後の 2 区間）を半幅 joint・中心 0 のまっすぐな水路にそろえる
+ * （どこまでもモードで区間どうしを継ぎ目なくつなぐため。乱数の消費順は変えない）
+ */
+export function buildCourse(preset: CoursePreset, seed: number, rng: Rng, joint = 0): Course {
+  const courseId = preset.id;
   const widthStep = 80;
   const nW = Math.floor(preset.length / widthStep) + 2;
   const halfWidths: number[] = [];
@@ -204,6 +220,12 @@ export function generateCourse(courseId: string, seed: number): Course {
       if (cx < -preset.meander) cx = -2 * preset.meander - cx;
     }
     centers.push(i <= 1 ? 0 : cx);
+  }
+  if (joint > 0) {
+    for (const i of [0, 1, nW - 2, nW - 1]) {
+      halfWidths[i] = joint;
+      centers[i] = 0;
+    }
   }
   const startY = 30;
   const goalY = preset.length - 30;
@@ -402,6 +424,8 @@ export function windAt(c: Course, t: number, out: [number, number]): void {
 /** 滝の上流で影響が出始める距離・下流で乱れが続く距離（cm） */
 export const DROP_APPROACH = 25;
 export const DROP_PLUNGE = 45;
+/** 滝壺の逆流の強さ（下流向きの流れに対する、戻り流れの割合） */
+export const ROLL_BACKFLOW = 0.7;
 
 /**
  * 流速場。out[0]=vx, out[1]=vy に書き込む。
@@ -433,6 +457,12 @@ export function flowAt(c: Course, f: FeatureSet, x: number, y: number, t: number
       const s = smooth((u + DROP_APPROACH) / DROP_APPROACH);
       vy *= 1 + 0.5 * hk * s;
       if (dr.notchW > 0) vx += (dr.notchX - x) * 0.9 * hk * s;
+    } else if (dr.roll && u < dr.roll) {
+      // 滝壺の逆流：落ち口のすぐ下で水面が上流へ戻り、落ちてきた水とぶつかる所でよどむ
+      const s = u / dr.roll;
+      const hump = smooth(s < 0.25 ? s * 4 : (1 - s) * (1 / 0.75));
+      vy *= 1 - (1 + ROLL_BACKFLOW) * hump;
+      turb += 1.5 * hk;
     } else {
       const k = 1 - u / DROP_PLUNGE;
       vy *= 1 + 0.7 * hk * k * k;

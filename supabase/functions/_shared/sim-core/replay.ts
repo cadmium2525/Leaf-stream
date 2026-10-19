@@ -11,6 +11,8 @@ export interface LeafPose {
   c: number;
   s: number;
   contact: number;
+  /** 滝壺で縦に回る角度（描画だけ。どこまでもモードの観戦で使う） */
+  tumble?: number;
 }
 
 /** 走の経過秒 t における、レーン lane（0=左, 1=右）の葉の姿勢 */

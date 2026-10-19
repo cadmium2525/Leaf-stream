@@ -6,7 +6,7 @@ import { speciesColor } from '../../render/textures.ts';
 import { PreviewChannel } from '../../editor/preview.ts';
 import { errorText, getMyProfile, online, registerLeaf } from '../../api/client.ts';
 import { h, hideToast, toast } from '../dom.ts';
-import { loadDraft, saveDraft } from '../state.ts';
+import { loadDraft, saveDraft, type DraftKind } from '../state.ts';
 import type { Page, Router } from '../router.ts';
 
 /** /editor：切断・Undo/Redo・形状検証・プレビュー・練習レース・登録 */
@@ -25,8 +25,10 @@ export function editorPage(router: Router): Page {
 
   return {
     paper: true,
-    mount(root) {
-      const draft = loadDraft();
+    mount(root, params) {
+      // レース用とどこまでもモード用の葉は別々に保存する
+      const kind: DraftKind = params.get('for') === 'endless' ? 'endless' : 'race';
+      const draft = loadDraft(kind);
       const canvas = h('canvas', { 'aria-label': '葉っぱの切断キャンバス。外から外へドラッグして切ります' });
       const tip = h('div', { class: 'tip' }, '葉の外から外へ、なぞって切る');
       const chooseRow = h('div', { class: 'btn-row hidden' },
@@ -45,6 +47,10 @@ export function editorPage(router: Router): Page {
       const regInfo = h('p', { class: 'muted' });
       const registerBtn = h('button', { class: 'btn primary' }, 'この葉っぱを登録');
       const practiceBtn = h('button', { class: 'btn' }, 'この葉で練習レース');
+      const endlessBtn = h('button', { class: 'btn primary', onclick: () => router.go('/endless') }, 'この葉で どこまでも');
+      const kindTabs = h('div', { class: 'tabs kind-tabs' },
+        h('a', { href: '/editor', 'data-link': true, class: `btn small${kind === 'race' ? ' active' : ''}` }, 'レース用の葉'),
+        h('a', { href: '/editor?for=endless', 'data-link': true, class: `btn small${kind === 'endless' ? ' active' : ''}` }, 'どこまでも用の葉'));
       const previewCanvas = h('canvas', { class: 'preview-canvas', 'aria-label': 'プレビュー水路' });
       const previewInfo = h('p', { class: 'muted' }, 'プレビュー水路を流れています（白は切る前の形）');
       const speciesRow = h('div', { class: 'species-row' });
@@ -68,6 +74,12 @@ export function editorPage(router: Router): Page {
           h('div', { class: 'editor-canvas-wrap' }, canvas, h('div', { class: 'editor-hint' }, tip, chooseRow)),
           h('aside', { class: 'editor-side' },
             h('section', { class: 'panel' },
+              kindTabs,
+              h('p', { class: 'muted', style: 'margin-top:6px' }, kind === 'endless'
+                ? 'どこまでもモードで流す葉っぱです。レース用の葉とは別に保存されます。'
+                : 'ランク戦・練習レースで使う葉っぱです。どこまでもモード用の葉とは別に保存されます。'),
+            ),
+            h('section', { class: 'panel' },
               h('h2', {}, '葉っぱの種類'),
               speciesRow,
               speciesDesc,
@@ -79,14 +91,16 @@ export function editorPage(router: Router): Page {
             ),
             h('section', { class: 'panel' }, metrics, status),
             h('section', { class: 'panel' }, h('h3', {}, 'プレビュー水路'), previewCanvas, previewInfo),
-            h('section', { class: 'panel' }, h('div', { class: 'btn-row' }, practiceBtn, registerBtn), regInfo),
+            kind === 'endless'
+              ? h('section', { class: 'panel' }, h('div', { class: 'btn-row' }, endlessBtn), regInfo)
+              : h('section', { class: 'panel' }, h('div', { class: 'btn-row' }, practiceBtn, registerBtn), regInfo),
           ),
         ),
       );
 
       const update = (st: EditorState) => {
         const { polygon: p, cuts, species } = st;
-        saveDraft({ polygon: p, cuts, species });
+        saveDraft({ polygon: p, cuts, species }, kind);
         renderSpecies(species);
         const v = validateLeaf(p);
         const a = area(p);
@@ -102,10 +116,12 @@ export function editorPage(router: Router): Page {
         status.textContent = v.ok ? '✓ 登録できる形です' : `登録できません：${v.errors.map((e) => LEAF_ERROR_MESSAGES[e]).join('／')}`;
         registerBtn.disabled = !v.ok;
         practiceBtn.disabled = !v.ok;
+        endlessBtn.disabled = !v.ok;
         undoBtn.disabled = !editor?.canUndo;
         redoBtn.disabled = !editor?.canRedo;
         const same = registeredHash === shapeHash(p) && registeredSpecies === species;
-        if (!online) regInfo.textContent = 'サーバー未設定のため、登録はできません（練習は遊べます）。';
+        if (kind === 'endless') regInfo.textContent = '小さくすると岩や杭はすり抜けやすくなりますが、滝壺に飲まれやすくなります。';
+        else if (!online) regInfo.textContent = 'サーバー未設定のため、登録はできません（練習は遊べます）。';
         else if (registeredVersion === null) regInfo.textContent = 'まだ登録していません。登録するとランク戦で使われます（ユーザー登録は不要）。';
         else regInfo.textContent = same ? `登録中の葉っぱ（v${registeredVersion}）と同じ形です。` : `登録中は v${registeredVersion}。この形に更新できます。`;
         preview?.setLeaf(p, getSpecies(species).polygon);
@@ -152,7 +168,7 @@ export function editorPage(router: Router): Page {
         }
       });
 
-      if (online) {
+      if (online && kind === 'race') {
         void getMyProfile().then(({ leaf }) => {
           if (!leaf) return;
           registeredHash = leaf.shape_hash;

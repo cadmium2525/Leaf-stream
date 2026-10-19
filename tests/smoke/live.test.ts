@@ -6,7 +6,9 @@
 import { readFileSync } from 'node:fs';
 import { afterAll, describe, expect, test } from 'vitest';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { BOT_LEAVES, getSpecies, simulateRace, type Polygon } from '../../packages/sim-core/src/index.ts';
+import {
+  BOT_LEAVES, ENDLESS_VERSION, endlessSeed, getSpecies, isoWeekKey, simulateEndless, simulateRace, type Polygon,
+} from '../../packages/sim-core/src/index.ts';
 
 const env = Object.fromEntries(
   readFileSync('.env.production', 'utf8').split('\n')
@@ -111,5 +113,40 @@ describe.skipIf(!process.env.SMOKE)('本番スモークテスト', () => {
     // 自分のレースは見える
     const mine = await a.sb.from('races').select('id').eq('id', race.id);
     expect(mine.data).toHaveLength(1);
+  }, 60_000);
+
+  test('どこまでも：サーバーの再計算で記録 → 自己ベストだけ更新 → ランキング', async () => {
+    const p = await newPlayer('スモークE', getSpecies('sakura').polygon);
+    const week = isoWeekKey(Date.now());
+    const polygon = getSpecies('nasturtium').polygon;
+    const local = simulateEndless({ seed: endlessSeed(week), polygon, lane: 2 }).result;
+
+    const r1 = await p.call('endless-submit', { polygon, species: 'nasturtium', lane: 2, week, version: ENDLESS_VERSION });
+    expect(r1.status, JSON.stringify(r1.body)).toBe(200);
+    // サーバー（Deno）とブラウザ側の計算が一致する
+    expect(r1.body.distance).toBe(local.distance);
+    expect(r1.body.improved).toBe(true);
+    expect(r1.body.best).toBe(local.distance);
+
+    // 小さすぎる記録では自己ベストは変わらない
+    const tiny = simulateEndless({ seed: endlessSeed(week), polygon: getSpecies('yanagi').polygon, lane: -10 }).result;
+    const r2 = await p.call('endless-submit', { polygon: getSpecies('yanagi').polygon, species: 'yanagi', lane: -10, week, version: ENDLESS_VERSION });
+    expect(r2.status, JSON.stringify(r2.body)).toBe(200);
+    expect(r2.body.best).toBe(Math.max(local.distance, tiny.distance));
+
+    // 不正な入力は拒否
+    expect((await p.call('endless-submit', { polygon, lane: 99, week })).body.error).toBe('bad_lane');
+    expect((await p.call('endless-submit', { polygon, lane: 0, week: '1999-W01' })).body.error).toBe('bad_week');
+    expect((await p.call('endless-submit', { polygon, lane: 0, week, version: 'old' })).status).toBe(409);
+
+    // ランキングに載り、クライアントからの直接書き込みは拒否
+    const anon = createClient(URL, KEY, { auth: { persistSession: false } });
+    const lb = await anon.rpc('get_endless_leaderboard', { p_week: week, p_limit: 50, p_offset: 0 });
+    expect(lb.error, JSON.stringify(lb.error)).toBeNull();
+    expect((lb.data as { user_id: string }[]).some((r) => r.user_id === p.id)).toBe(true);
+    const hack = await p.sb.from('endless_records').update({ distance_cm: 999999 }).eq('user_id', p.id);
+    const after = await anon.from('endless_records').select('distance_cm').eq('user_id', p.id).eq('week_key', week).single();
+    expect(hack.error !== null || after.data!.distance_cm !== 999999).toBe(true);
+    expect(after.data!.distance_cm).toBe(r2.body.best);
   }, 60_000);
 });

@@ -52,6 +52,7 @@ export function homePage(): Page {
           ),
           h('div', { class: 'btn-row' },
             h('a', { href: '/race', 'data-link': true, class: 'btn primary' }, 'あそぶ'),
+            h('a', { href: '/endless', 'data-link': true, class: 'btn' }, 'どこまでも'),
             h('a', { href: '/editor', 'data-link': true, class: 'btn' }, '葉っぱを切る'),
             h('a', { href: '/leaderboard', 'data-link': true, class: 'btn' }, 'ランキング'),
           ),

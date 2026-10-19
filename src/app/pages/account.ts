@@ -1,7 +1,7 @@
-import { deleteAccount, errorText, getMyProfile, online, updateDisplayName } from '../../api/client.ts';
+import { deleteAccount, errorText, getMyProfile, myEndless, online, updateDisplayName } from '../../api/client.ts';
 import { drawLeafThumb } from '../context.ts';
 import { speciesColor } from '../../render/textures.ts';
-import { getSpecies } from '../../../packages/sim-core/src/index.ts';
+import { getSpecies, isoWeekKey } from '../../../packages/sim-core/src/index.ts';
 import { h, toast } from '../dom.ts';
 import { nameInput, nameProblem } from '../name-field.ts';
 import type { Page, Router } from '../router.ts';
@@ -21,7 +21,9 @@ export function accountPage(router: Router): Page {
         return;
       }
 
-      const { profile, stats, leaf } = await getMyProfile();
+      const week = isoWeekKey(Date.now());
+      const [{ profile, stats, leaf }, endless] = await Promise.all([getMyProfile(), myEndless(week).catch(() => ({ week: null, all: null }))]);
+      const m = (cm: number | null) => (cm === null ? '-' : `${(cm / 100).toFixed(1)} m`);
       const name = nameInput(profile?.display_name ?? '');
       const saveBtn = h('button', {
         class: 'btn primary', onclick: async () => {
@@ -74,6 +76,13 @@ export function accountPage(router: Router): Page {
             ] as [string, unknown][]).map(([k, v]) => h('div', { class: 'stat' }, h('b', {}, String(v ?? 0)), h('span', {}, k)))),
         ),
         h('section', { class: 'panel' },
+          h('h2', {}, 'どこまでも'),
+          h('div', { class: 'stat-grid' },
+            h('div', { class: 'stat' }, h('b', {}, m(endless.week)), h('span', {}, '今週のベスト')),
+            h('div', { class: 'stat' }, h('b', {}, m(endless.all)), h('span', {}, '歴代ベスト'))),
+          h('div', { class: 'btn-row', style: 'margin-top:10px' }, h('a', { href: '/endless', 'data-link': true, class: 'btn' }, 'どこまでもへ')),
+        ),
+        h('section', { class: 'panel' },
           h('h2', {}, '登録中の葉っぱ'),
           leaf
             ? h('div', { style: 'display:flex;gap:16px;align-items:center;flex-wrap:wrap' }, thumb,
@@ -83,7 +92,7 @@ export function accountPage(router: Router): Page {
         ),
         h('section', { class: 'panel' },
           h('h2', {}, 'データの削除'),
-          h('p', { class: 'muted' }, '名前・登録した葉っぱ・戦績・レース記録をすべて削除し、ランキングからも消えます。元に戻せません。'),
+          h('p', { class: 'muted' }, '名前・登録した葉っぱ・戦績・レース記録・どこまでもモードの記録をすべて削除し、ランキングからも消えます。元に戻せません。'),
           h('button', {
             class: 'btn warn', onclick: async () => {
               const v = prompt('削除するには「削除」と入力してください');

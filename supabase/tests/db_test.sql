@@ -216,4 +216,47 @@ exception when insufficient_privilege then null;
 end $$;
 reset role;
 select 'usage guard: passed' as result;
+
+-- どこまでもモード：自己ベストのときだけ更新・順位・ランキング
+insert into auth.users (id) values ('00000000-0000-0000-0000-0000000000e1'), ('00000000-0000-0000-0000-0000000000e2');
+set role service_role;
+create temp table e1 as select * from submit_endless('00000000-0000-0000-0000-0000000000e1', '2026-W43', 1200, '[[0,0],[1,0],[0,1]]', 'h', 'momiji', 3, 600, 'roller', 'E1.0');
+select pg_temp.assert((select improved from e1) and (select best from e1) = 1200 and (select rank from e1) = 1, '初回登録・1 位');
+select pg_temp.assert((select improved from submit_endless('00000000-0000-0000-0000-0000000000e1', '2026-W43', 900, '[[0,0],[1,0],[0,1]]', 'h', 'sakura', 0, 500, 'post', 'E1.0')) = false, '下回る記録では更新しない');
+select pg_temp.assert((select distance_cm from endless_records where user_id = '00000000-0000-0000-0000-0000000000e1') = 1200, 'ベストが残る');
+select pg_temp.assert((select rank from submit_endless('00000000-0000-0000-0000-0000000000e2', '2026-W43', 1500, '[[0,0],[1,0],[0,1]]', 'h', 'yanagi', -2, 700, 'stone', 'E1.0')) = 1, '上回れば 1 位');
+select pg_temp.assert((select rank from submit_endless('00000000-0000-0000-0000-0000000000e1', '2026-W43', 1300, '[[0,0],[1,0],[0,1]]', 'h', 'momiji', 3, 650, 'roller', 'E1.0')) = 2, '更新しても 2 位');
+select submit_endless('00000000-0000-0000-0000-0000000000e1', '2026-W42', 2000, '[[0,0],[1,0],[0,1]]', 'h', 'momiji', 0, 900, 'post', 'E1.0');
+reset role;
+set role anon;
+select pg_temp.assert((select user_id from get_endless_leaderboard('2026-W43') where rank = 1) = '00000000-0000-0000-0000-0000000000e2', '週ランキング');
+select pg_temp.assert((select count(*) from get_endless_leaderboard('2026-W43')) = 2, '週ランキングの件数');
+select pg_temp.assert((select distance_cm from get_endless_leaderboard('all') where rank = 1) = 2000, '歴代は一人一件のベスト');
+select pg_temp.assert((select count(*) from get_endless_leaderboard('all')) = 2, '歴代の件数');
+select pg_temp.assert((select count(*) from endless_records) = 3, '記録は誰でも読める');
+do $$ begin
+  perform submit_endless('00000000-0000-0000-0000-0000000000e1', '2026-W43', 99999, '[]', 'h', 'sakura', 0, 1, 'x', 'E1.0');
+  raise exception 'should fail';
+exception when insufficient_privilege then null;
+end $$;
+do $$ begin
+  insert into endless_records (user_id, week_key, distance_cm, polygon_json, shape_hash, lane, ticks, reason, sim_version)
+  values ('00000000-0000-0000-0000-0000000000e1', '2026-W44', 99999, '[]', 'h', 0, 1, 'x', 'E1.0');
+  raise exception 'should fail';
+exception when insufficient_privilege then null;
+end $$;
+reset role;
+-- 送信回数の上限
+insert into endless_attempts (user_id) select '00000000-0000-0000-0000-0000000000e2' from generate_series(1, 120);
+set role service_role;
+do $$ begin
+  perform submit_endless('00000000-0000-0000-0000-0000000000e2', '2026-W43', 1, '[]', 'h', 'sakura', 0, 1, 'x', 'E1.0');
+  raise exception 'should fail';
+exception when raise_exception then
+  if sqlerrm <> 'rate_limited' then raise; end if;
+end $$;
+reset role;
+delete from auth.users where id = '00000000-0000-0000-0000-0000000000e2';
+select pg_temp.assert((select count(*) from endless_records where user_id = '00000000-0000-0000-0000-0000000000e2') = 0, '削除で記録も消える');
+select 'endless: passed' as result;
 select 'db_test: all passed' as result;

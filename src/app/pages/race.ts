@@ -1,5 +1,5 @@
 import {
-  BOT_LEAVES, COURSE_IDS, COURSE_PRESETS, SIM, generateCourse, isSpeciesId, shapeHash, simulateRace, windAt, type Course,
+  BOT_LEAVES, COURSE_IDS, COURSE_PRESETS, SIM, generateCourse, isSpeciesId, shapeHash, simulateRace,
   type SpeciesId, ticksToSeconds, validateLeaf,
   type LeafRunResult, type Polygon, type RaceOutcome, type RaceResult,
 } from '../../../packages/sim-core/src/index.ts';
@@ -10,6 +10,7 @@ import {
 import { ambience, getScene } from '../context.ts';
 import { h, toast } from '../dom.ts';
 import { ReplayPlayer, type PlayerTick } from '../replay-player.ts';
+import { windText } from '../wind-text.ts';
 import { loadDraft, settings } from '../state.ts';
 import { nameInput, nameProblem } from '../name-field.ts';
 import type { Page, Router } from '../router.ts';
@@ -100,7 +101,12 @@ export function racePage(router: Router): Page {
       ),
       draftOk ? null : h('p', { class: 'muted' }, '編集中の葉っぱが登録条件を満たしていません。'),
     );
-    ui.replaceChildren(h('div', { class: 'race-center' }, h('div', { class: 'mode-cards' }, rankedCard, practiceCard)));
+    const endlessCard = h('div', { class: 'glass mode-card' },
+      h('h2', {}, 'どこまでも'),
+      h('p', { class: 'muted' }, '詰まるまで流れ続けて、進んだ距離を競います。流す位置だけ決めて、あとは見守るだけ。'),
+      h('div', { class: 'btn-row' }, h('a', { href: '/endless', 'data-link': true, class: 'btn primary' }, 'どこまでもへ')),
+    );
+    ui.replaceChildren(h('div', { class: 'race-center' }, h('div', { class: 'mode-cards' }, rankedCard, practiceCard, endlessCard)));
 
     // ランク戦の状態を確認
     if (!online) {
@@ -439,17 +445,4 @@ export function racePage(router: Router): Page {
 function statusText(r: LeafRunResult): string {
   const pen = `+${SIM.penaltyTicks / 60}秒`;
   return r.status === 'stuck' ? `詰まり（${pen}）` : `時間切れ（${pen}）`;
-}
-
-/** いまの風を「追い風 1.2m/s ↓」のように表す（↓ が下流＝画面奥） */
-function windText(course: Course, t: number, out: [number, number]): string {
-  windAt(course, t, out);
-  const [x, y] = out;
-  const sp = Math.sqrt(x * x + y * y) / 100;
-  if (sp < 0.15) return '風：ほぼ無風';
-  let kind: string;
-  if (Math.abs(y) >= Math.abs(x) * 1.2) kind = y > 0 ? '追い風' : '向かい風';
-  else if (Math.abs(x) >= Math.abs(y) * 1.2) kind = '横風';
-  else kind = y > 0 ? '斜め追い風' : '斜め向かい風';
-  return `風：${kind} ${sp.toFixed(1)}m/s`;
 }
