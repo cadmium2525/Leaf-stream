@@ -48,8 +48,9 @@ export function leaderboardPage(): Page {
           body.replaceChildren(h('table', { class: 'rank-table' },
             h('thead', {}, h('tr', {}, h('th', {}, '順位'), h('th', {}, '名前'), h('th', {}, TABS.find((t) => t[0] === sort)![1]),
               h('th', {}, '現在'), h('th', {}, '防衛 勝/敗'))),
+            // rank はサーバーが付けた全体の順位（offset 込み）なので、ページ分は足さない
             h('tbody', {}, ...rows.map((r) => h('tr', { class: r.user_id === me ? 'me' : '' },
-              h('td', {}, r.rank + page * PAGE), h('td', {}, r.display_name), h('td', {}, h('b', {}, r[key] as number)),
+              h('td', {}, r.rank), h('td', {}, r.display_name), h('td', {}, h('b', {}, r[key] as number)),
               h('td', {}, r.current_streak), h('td', {}, `${r.defense_wins} / ${r.defense_losses}`)))),
           ));
         }

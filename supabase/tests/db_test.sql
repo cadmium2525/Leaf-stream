@@ -162,6 +162,8 @@ set role anon;
 select pg_temp.assert((select count(*) from get_leaderboard('best', 10, 0)) = 2, 'ランキング取得');
 select pg_temp.assert((select display_name from get_leaderboard('best', 10, 0) where rank = 1) like '葉っぱ____', 'best 順・仮の名前');
 select pg_temp.assert((select count(*) from get_leaderboard('best', 100000, 0)) <= 50, '取得上限');
+-- 順位は全体での順位（offset を足し込み済み）。クライアントでページ分を足すと二重になる
+select pg_temp.assert((select rank from get_leaderboard('best', 1, 1)) = 2, '2 ページ目の順位は通し番号');
 reset role;
 
 -- T08: 無料枠の閾値で新規ランク戦の受付停止
