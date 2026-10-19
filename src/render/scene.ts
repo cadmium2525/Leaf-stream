@@ -323,6 +323,7 @@ export class CanalScene {
 
     // 側溝：右は道路（白線つき）、左は細い路肩とブロック塀
     const asphalt = asphaltMap(256);
+    asphalt.userData.perCourse = true;
     const roadMat = new THREE.MeshStandardMaterial({ map: asphalt, roughness: 0.95 });
     const road = new THREE.Mesh(T.strip(1, [[WALL_T - 0.005, WALL_TOP - 0.004, 0], [4, WALL_TOP - 0.004, 4]], { tile: 1 }), roadMat);
     road.receiveShadow = true;
@@ -333,6 +334,7 @@ export class CanalScene {
 
     // ブロック塀
     const blockTex = blockMap(256);
+    blockTex.userData.perCourse = true;
     const segLen = 1.0;
     const ys: number[] = [];
     for (let y = T.y0; y < T.y1; y += segLen / S) ys.push(y);
@@ -857,7 +859,11 @@ export class CanalScene {
   }
 }
 
-/** グループ配下のジオメトリとマテリアルを解放して取り外す */
+/**
+ * グループ配下のジオメトリとマテリアルを解放して取り外す。
+ * コースごとに作ったテクスチャ（userData.perCourse）と InstancedMesh の行列バッファも解放する。
+ * 共有テクスチャ（this.textures・葉）は残す
+ */
 function disposeTree(g: THREE.Object3D | null, parent: THREE.Object3D): void {
   if (!g) return;
   parent.remove(g);
@@ -865,7 +871,12 @@ function disposeTree(g: THREE.Object3D | null, parent: THREE.Object3D): void {
     if (o instanceof THREE.Mesh || o instanceof THREE.Points || o instanceof THREE.Line) {
       o.geometry.dispose();
       const m = o.material as THREE.Material | THREE.Material[];
-      (Array.isArray(m) ? m : [m]).forEach((x) => x.dispose());
+      (Array.isArray(m) ? m : [m]).forEach((x) => {
+        const map = (x as THREE.MeshStandardMaterial).map;
+        if (map?.userData.perCourse) map.dispose();
+        x.dispose();
+      });
+      if (o instanceof THREE.InstancedMesh) o.dispose();
     }
   });
 }

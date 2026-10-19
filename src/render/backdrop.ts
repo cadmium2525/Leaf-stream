@@ -139,6 +139,8 @@ export function buildBackdrop(env: Env, treeCount: number): THREE.Group {
   const r = rng(env === 'paddy' ? 77 : env === 'town' ? 78 : 79);
   if (env === 'paddy') {
     const tex = paddyMap(256);
+    // 遠景を作り直すときに解放する（scene.ts の disposeTree）
+    tex.userData.perCourse = true;
     tex.repeat.set(60, 60);
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9, color: 0xc8d6a8 }));
     ground.rotation.x = -Math.PI / 2;
